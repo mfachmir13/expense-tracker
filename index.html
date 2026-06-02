@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Expense Tracker v6</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --app-bg:#1a1a1a;--card-bg:#2a2a2a;--card-border:#3a3a3a;
+  --text-pri:#f0f0f0;--text-sec:#a0a0a0;--text-hint:#666;
+  --accent:#1D9E75;--accent-dark:#0F6E56;--danger:#E24B4A;
+  --income:#378ADD;--income-dark:#1F5FA8;
+  --nav-bg:#222;--input-bg:#333;--input-border:#444;
+}
+html{font-size:16px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--app-bg);color:var(--text-pri);
+  min-height:100vh;min-height:100dvh;font-size:14px;overflow-x:hidden;
+}
+.app{
+  width:100%;max-width:480px;margin:0 auto;
+  display:flex;flex-direction:column;
+  min-height:100vh;min-height:100dvh;
+}
+
+.nav{
+  background:var(--nav-bg);border-bottom:0.5px solid var(--card-border);
+  display:flex;flex-shrink:0;
+}
+.nav-btn{
+  flex:1;padding:10px 4px 8px;border:none;background:none;cursor:pointer;
+  font-size:10px;color:var(--text-sec);
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-family:inherit;-webkit-appearance:none;
+}
+.nav-btn.active{color:var(--accent)}
+.nav-btn i{font-size:22px}
+.content{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
+.page{display:none}.page.active{display:block}
+.card{background:var(--card-bg);border-radius:14px;border:0.5px solid var(--card-border);padding:14px;margin-bottom:10px}
+.btn{
+  border:0.5px solid var(--card-border);border-radius:10px;
+  background:var(--card-bg);color:var(--text-pri);
+  padding:11px 14px;font-size:14px;cursor:pointer;
+  font-family:inherit;width:100%;-webkit-appearance:none;
+}
+.btn:active{opacity:.8}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-income{background:var(--income);color:#fff;border-color:var(--income)}
+.btn-danger{color:var(--danger);border-color:var(--card-border)}
+.btn-sm{padding:6px 12px;font-size:12px;width:auto;border-radius:8px}
+input,select,textarea{
+  width:100%;border:0.5px solid var(--input-border);border-radius:10px;
+  padding:11px 13px;font-size:16px;background:var(--input-bg);
+  color:var(--text-pri);font-family:inherit;margin-bottom:10px;
+  -webkit-appearance:none;appearance:none;
+}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%23a0a0a0' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;
+}
+label{font-size:12px;color:var(--text-sec);display:block;margin-bottom:5px;font-weight:500}
+.hero{background:linear-gradient(135deg,#1a3d2e,#0f2a1e);border-radius:16px;padding:18px;margin-bottom:10px;border:0.5px solid #1D9E7540}
+.hero-income{background:linear-gradient(135deg,#1a2a3d,#0f1e2a);border-color:#378ADD40}
+.hero .lbl{font-size:12px;color:#5DCAA5;margin-bottom:4px}
+.hero-income .lbl{color:#6DB3E8}
+.hero .amt{font-size:28px;font-weight:700;color:#fff;margin-bottom:2px}
+.hero .sub{font-size:12px;color:#9FE1CB}
+.net-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+.net-card{background:var(--card-bg);border-radius:10px;border:0.5px solid var(--card-border);padding:11px 8px;text-align:center}
+.net-card .lbl{font-size:10px;color:var(--text-sec);margin-bottom:3px}
+.net-card .val{font-size:13px;font-weight:700}
+.val-green{color:var(--accent)}
+.val-red{color:var(--danger)}
+.val-blue{color:var(--income)}
+.rek-scroll{display:flex;gap:8px;overflow-x:auto;margin-bottom:10px;padding-bottom:4px;scrollbar-width:none}
+.rek-scroll::-webkit-scrollbar{display:none}
+.rek-mini{background:var(--card-bg);border:0.5px solid var(--card-border);border-radius:10px;padding:10px 14px;min-width:130px;flex-shrink:0}
+.rek-mini .rname{font-size:11px;color:var(--text-sec);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.rek-mini .rbal{font-size:14px;font-weight:700}
+.rdot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.section-title{font-size:11px;color:var(--text-sec);font-weight:700;margin:12px 0 7px;text-transform:uppercase;letter-spacing:.6px}
+.cat-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:0.5px solid var(--card-border);cursor:pointer}
+.cat-row:last-child{border-bottom:none}
+.cat-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.cat-name{font-size:14px;font-weight:500}
+.cat-amt{text-align:right}
+.cat-amt .amt{font-size:13px;font-weight:600}
+.cat-amt .count{font-size:11px;color:var(--text-sec)}
+.bar{height:3px;background:var(--card-border);border-radius:2px;margin-top:5px;overflow:hidden;width:80px}
+.bar-fill{height:100%;border-radius:2px}
+.tx-item{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:0.5px solid var(--card-border)}
+.tx-item:last-child{border-bottom:none}
+.tx-icon{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.tx-info{flex:1;min-width:0}
+.tx-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-sub{font-size:11px;color:var(--text-sec)}
+.tx-right{text-align:right;flex-shrink:0}
+.tx-amt{font-size:13px;font-weight:700}
+.tx-amt-out{color:var(--danger)}
+.tx-amt-in{color:var(--income)}
+.tx-rek{font-size:10px;color:var(--text-hint)}
+.del-btn{background:none;border:none;color:var(--text-hint);cursor:pointer;font-size:18px;padding:4px 6px;flex-shrink:0}
+.del-btn:active{color:var(--danger)}
+.month-nav{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.month-nav span{flex:1;text-align:center;font-size:16px;font-weight:700}
+.month-nav button{border:0.5px solid var(--card-border);background:var(--card-bg);border-radius:10px;padding:8px 13px;cursor:pointer;color:var(--text-pri);font-size:16px}
+.type-tabs{display:flex;background:var(--input-bg);border-radius:12px;padding:3px;margin-bottom:14px}
+.type-tab{flex:1;padding:9px;border:none;background:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-sec)}
+.type-tab-out.active{background:var(--danger);color:#fff}
+.type-tab-in.active{background:var(--income);color:#fff}
+.back-btn{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--accent);cursor:pointer;margin-bottom:12px;background:none;border:none;padding:0;font-family:inherit}
+.subcat-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:0.5px solid var(--card-border)}
+.subcat-row:last-child{border-bottom:none}
+.empty{text-align:center;padding:32px 16px;color:var(--text-sec);font-size:14px}
+.rek-card{background:var(--card-bg);border-radius:12px;border:0.5px solid var(--card-border);padding:14px;margin-bottom:8px}
+.info-box{background:#1D9E7512;border:0.5px solid #1D9E7440;border-radius:10px;padding:10px 12px;font-size:12px;color:#9FE1CB;margin-bottom:10px;line-height:1.6;display:flex;align-items:center;gap:8px}
+.warn-box{background:#FAC77512;border:0.5px solid #FAC77540;border-radius:10px;padding:10px 12px;font-size:12px;color:#FAC775;margin-bottom:10px;line-height:1.6}
+
+/* MODAL - slides from bottom */
+.modal-overlay{position:fixed;inset:0;background:#000a;z-index:100;display:flex;align-items:flex-end}
+.modal-box{
+  background:var(--card-bg);border-radius:20px 20px 0 0;
+  border-top:0.5px solid var(--card-border);
+  padding:20px 18px 32px;width:100%;max-height:92vh;overflow-y:auto;
+}
+.modal-handle{width:36px;height:4px;background:var(--card-border);border-radius:2px;margin:0 auto 16px}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:6px}
+.modal-desc{font-size:13px;color:var(--text-sec);margin-bottom:16px;line-height:1.6}
+
+
+.loading-overlay{position:fixed;inset:0;background:#000c;z-index:200;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.loading-overlay.show{display:flex}
+.spinner{width:38px;height:38px;border:3px solid var(--card-border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:300;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;max-width:90vw;text-align:center;border:0.5px solid var(--card-border)}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+
+
+  <nav class="nav">
+    <button class="nav-btn active" onclick="showPage('dashboard')" id="nav-dashboard">
+      <i class="ti ti-home"></i><span>Dashboard</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('txlist')" id="nav-txlist">
+      <i class="ti ti-list"></i><span>Transaksi</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('add')" id="nav-add">
+      <i class="ti ti-circle-plus" style="font-size:26px;color:var(--accent)"></i><span>Catat</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('transfer')" id="nav-transfer">
+      <i class="ti ti-transfer"></i><span>Transfer</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('rekening')" id="nav-rekening">
+      <i class="ti ti-wallet"></i><span>Rekening</span>
+    </button>
+    <button class="nav-btn" onclick="showPage('settings')" id="nav-settings">
+      <i class="ti ti-adjustments-horizontal"></i><span>Kelola</span>
+    </button>
+  </nav>
+
+  <!-- PAGES -->
+  <div class="content">
+    <div id="page-dashboard" class="page active"></div>
+    <div id="page-txlist" class="page"></div>
+    <div id="page-add" class="page"></div>
+    <div id="page-transfer" class="page"></div>
+    <div id="page-rekening" class="page"></div>
+    <div id="page-settings" class="page"></div>
+  </div>
+</div>
+
+<!-- EDIT TX MODAL -->
+<div class="modal-overlay" id="edit-modal" style="display:none" onclick="if(event.target===this)hideEditModal()">
+  <div class="modal-box" id="edit-modal-box"></div>
+</div>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <div style="font-size:13px;color:var(--text-sec)" id="loading-text">Memuat...</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────
+const LS_KEY = 'exptracker_v6';
+
+// Kategori pemasukan (fixed)
+const INCOME_CATS = [
+  {id:'gaji',    name:'Gaji',      emoji:'\uD83D\uDCBC', color:'#378ADD'},
+  {id:'tpp',     name:'TPP',       emoji:'\uD83C\uDFDB', color:'#5B8FD4'},
+  {id:'honor',   name:'Honor',     emoji:'\uD83C\uDF96', color:'#6DB3E8'},
+  {id:'inc_lain',name:'Lain-lain', emoji:'\uD83D\uDCB0', color:'#85C1E9'},
+];
+
+// Kategori pengeluaran default
+const DEFAULT_CATS = [
+  {id:'makan',    name:'Makan',           emoji:'\uD83C\uDF5C', color:'#FAC775', subs:['Makan di Luar','Jajan','Nongkrong']},
+  {id:'tagihan',  name:'Tagihan Rumah',   emoji:'\uD83C\uDFE0', color:'#85B7EB', subs:['Listrik','Wifi','Iuran RT']},
+  {id:'belanja',  name:'Belanja',         emoji:'\uD83D\uDED2', color:'#9FE1CB', subs:['Bahan Makanan','Perlengkapan Rumah']},
+  {id:'transport',name:'Transportasi',    emoji:'\uD83D\uDE97', color:'#AFA9EC', subs:['Bensin','E-Toll','Parkir','Service','Transportasi Umum']},
+  {id:'keluarga', name:'Keluarga & Anak', emoji:'\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67', color:'#F4C0D1', subs:['Pendidikan Anak','Kebutuhan Anak','Transfer Istri','Liburan']},
+  {id:'gayhidup', name:'Gaya Hidup',      emoji:'\u2728',       color:'#C0DD97', subs:['Belanja Pribadi','Games','Hiburan','Langganan Digital']},
+  {id:'kesehatan',name:'Kesehatan',       emoji:'\uD83D\uDC8A', color:'#F0997B', subs:['Obat','Dokter']},
+  {id:'finansial',name:'Finansial & Sosial',emoji:'\uD83D\uDCC8',color:'#5DCAA5',subs:['Tabungan','Investasi','Pay Later']},
+  {id:'lainlain', name:'Lain-lain',       emoji:'\uD83D\uDCE6', color:'#B4B2A9', subs:[]},
+];
+
+let S = {
+  transactions:[], rekening:[], categories:[],
+  currentMonth:new Date().getMonth(),
+  currentYear:new Date().getFullYear(),
+  activePage:'dashboard', dashView:null,
+};
+let EDIT_TX_ID = null; // for edit modal
+
+// ── INIT ────────────────────────────────────────────────────
+function initApp() {
+  loadLocal(); render();
+}
+
+// ── LOCAL STORAGE ────────────────────────────────────────────
+function loadLocal() {
+  try {
+    const d = localStorage.getItem(LS_KEY);
+    if (d) Object.assign(S, JSON.parse(d));
+    if (!S.categories || !S.categories.length)
+      S.categories = JSON.parse(JSON.stringify(DEFAULT_CATS));
+    // Migrate old icon strings to emoji field
+    S.categories.forEach(c => {
+      if (!c.emoji) c.emoji = c.icon || '\uD83D\uDCE6';
+    });
+    if (!S.rekening || !S.rekening.length)
+      S.rekening = [
+        {id:'r1',name:'BCA Tabungan',type:'Tabungan',color:'#1D9E75',saldoAwal:0},
+        {id:'r2',name:'BCA Debit',   type:'Debit',   color:'#378ADD',saldoAwal:0},
+        {id:'r3',name:'Cash',        type:'Tunai',   color:'#BA7517',saldoAwal:0},
+      ];
+    // Migrate: if old data uses 'saldo' (manual), convert to saldoAwal
+    S.rekening.forEach(r => {
+      if (r.saldoAwal === undefined) {
+        r.saldoAwal = r.saldo || 0;
+        delete r.saldo;
+      }
+    });
+    if (!S.transactions) S.transactions = [];
+    S.currentMonth = new Date().getMonth();
+    S.currentYear  = new Date().getFullYear();
+  } catch(e) {
+    S.categories = JSON.parse(JSON.stringify(DEFAULT_CATS));
+  }
+}
+
+function saveLocal() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch(e){}
+}
+
+function save() { saveLocal(); }
+
+
+// ── LOADING / TOAST ──────────────────────────────────────────
+function showLoading(t) {
+  document.getElementById('loading-text').textContent=t||'Memuat...';
+  document.getElementById('loading-overlay').classList.add('show');
+}
+function hideLoading() { document.getElementById('loading-overlay').classList.remove('show'); }
+let _tt;
+function showToast(msg) {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(_tt); _tt=setTimeout(()=>el.classList.remove('show'),3000);
+}
+
+// ── HELPERS ──────────────────────────────────────────────────
+function fmt(n){ return 'Rp '+Math.round(n).toLocaleString('id-ID'); }
+function getCat(id){
+  return S.categories.find(c=>c.id===id) || INCOME_CATS.find(c=>c.id===id) || {name:'?',emoji:'\u2753',color:'#888',subs:[]};
+}
+function getRek(id){ return S.rekening.find(r=>r.id===id)||{name:'?',color:'#888'}; }
+function monthName(){
+  const m=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return m[S.currentMonth]+' '+S.currentYear;
+}
+function getMonthTx(){
+  return S.transactions.filter(t=>{
+    const d=new Date(t.date);
+    return d.getMonth()===S.currentMonth && d.getFullYear()===S.currentYear;
+  });
+}
+function catEmoji(cat){
+  if (cat.emoji) return cat.emoji;
+  return '\uD83D\uDCE6';
+}
+
+// Saldo rekening dihitung dari saldo awal + semua transaksi (bukan disimpan manual)
+function getRekSaldo(rekId) {
+  const rek = S.rekening.find(r => r.id === rekId);
+  if (!rek) return 0;
+  const base = rek.saldoAwal || 0;
+  let saldo = base;
+  S.transactions.forEach(t => {
+    if (t.type === 'transfer') {
+      if (t.rekId === rekId) saldo -= (t.amount + (t.adminFee||0)); // keluar dari rekening asal + admin
+      if (t.rekIdTo === rekId) saldo += t.amount; // masuk ke rekening tujuan (tanpa admin)
+    } else if (t.rekId === rekId) {
+      if (t.type === 'income') saldo += t.amount;
+      else saldo -= (t.amount + (t.adminFee||0));
+    }
+  });
+  return saldo;
+}
+
+function getAllRekSaldo() {
+  return S.rekening.reduce((acc, r) => acc + getRekSaldo(r.id), 0);
+}
+
+function showPage(p) {
+  document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  document.getElementById('nav-'+p).classList.add('active');
+  S.activePage=p; S.dashView=null; render();
+}
+function prevMonth(){ S.currentMonth--; if(S.currentMonth<0){S.currentMonth=11;S.currentYear--;} S.dashView=null; render(); }
+function nextMonth(){
+  const n=new Date();
+  if(S.currentYear>n.getFullYear()||(S.currentYear===n.getFullYear()&&S.currentMonth>=n.getMonth())) return;
+  S.currentMonth++; if(S.currentMonth>11){S.currentMonth=0;S.currentYear++;}
+  S.dashView=null; render();
+}
+function render(){
+  const p=S.activePage;
+  if(p==='dashboard') renderDashboard();
+  if(p==='txlist')    renderTxList();
+  if(p==='add')       renderAdd();
+  if(p==='transfer')  renderTransfer();
+  if(p==='rekening')  renderRekening();
+  if(p==='settings')  renderSettings();
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────
+function renderDashboard(){
+  const el   = document.getElementById('page-dashboard');
+  const txs  = getMonthTx();
+  const outT = txs.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
+  const inT  = txs.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
+  const adminTotal = txs.filter(t=>t.type!=='income').reduce((a,t)=>a+(t.adminFee||0),0);
+  const net  = inT - outT;
+  const totalSaldo = getAllRekSaldo();
+
+  if (S.dashView) {
+    const isIncCat = !!INCOME_CATS.find(c=>c.id===S.dashView);
+    const cat    = getCat(S.dashView);
+    const catTxs = txs.filter(t=>t.catId===S.dashView);
+    const catTot = catTxs.reduce((a,t)=>a+t.amount,0);
+    const subMap = {};
+    if (!isIncCat) cat.subs.forEach(s=>subMap[s]=0);
+    catTxs.forEach(t=>{ subMap[t.subcat]=(subMap[t.subcat]||0)+t.amount; });
+    const allSubs = Object.entries(subMap).filter(([,v])=>v>0);
+    const maxSub  = Math.max(...Object.values(subMap),1);
+    el.innerHTML = `
+<button class="back-btn" onclick="S.dashView=null;render()"><i class="ti ti-arrow-left"></i> Dashboard</button>
+<div class="hero ${isIncCat?'hero-income':''}" style="border-color:${cat.color}40">
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="font-size:30px">${catEmoji(cat)}</span>
+    <div>
+      <div style="font-size:17px;font-weight:700;color:#fff">${cat.name}</div>
+      <div style="font-size:12px;color:var(--text-sec)">${catTxs.length} transaksi bulan ini</div>
+    </div>
+    <div style="margin-left:auto;font-size:20px;font-weight:700;color:${isIncCat?'var(--income)':'var(--danger)'}">${fmt(catTot)}</div>
+  </div>
+</div>
+${allSubs.length?`<div class="section-title">Per Subkategori</div>
+<div class="card">
+${allSubs.map(([sub,amt])=>`
+<div class="subcat-row">
+  <div>
+    <div style="font-size:14px">${sub||'Lainnya'}</div>
+    <div class="bar"><div class="bar-fill" style="width:${Math.round(amt/maxSub*100)}%;background:${cat.color}"></div></div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:13px;font-weight:600">${fmt(amt)}</div>
+    <div style="font-size:11px;color:var(--text-sec)">${catTot?Math.round(amt/catTot*100):0}%</div>
+  </div>
+</div>`).join('')}
+</div>`:''}
+<div class="section-title">Transaksi</div>
+<div class="card">
+${catTxs.length?catTxs.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(t=>txRow(t)).join(''):'<div class="empty">Belum ada transaksi</div>'}
+</div>`;
+    return;
+  }
+
+  const catMap = {};
+  S.categories.forEach(c=>catMap[c.id]={total:0,count:0});
+  INCOME_CATS.forEach(c=>catMap[c.id]={total:0,count:0});
+  txs.forEach(t=>{ if(t.type!=='transfer' && catMap[t.catId]){catMap[t.catId].total+=(t.amount+(t.adminFee||0));catMap[t.catId].count++;} });
+  const maxOut = Math.max(...S.categories.map(c=>(catMap[c.id]||{}).total||0),1);
+  const maxIn  = Math.max(...INCOME_CATS.map(c=>(catMap[c.id]||{}).total||0),1);
+
+  const rekMini = S.rekening.map(r=>`
+<div class="rek-mini">
+  <div class="rname"><span class="rdot" style="background:${r.color}"></span>${r.name}</div>
+  <div class="rbal" style="color:${r.color}">${fmt(getRekSaldo(r.id))}</div>
+  <div style="font-size:10px;color:var(--text-hint)">${r.type}</div>
+</div>`).join('');
+
+  el.innerHTML = `
+<div class="month-nav">
+  <button onclick="prevMonth()"><i class="ti ti-chevron-left"></i></button>
+  <span>${monthName()}</span>
+  <button onclick="nextMonth()"><i class="ti ti-chevron-right"></i></button>
+</div>
+<div class="hero">
+  <div class="lbl">Total Saldo Rekening</div>
+  <div class="amt">${fmt(totalSaldo)}</div>
+  <div class="sub">${S.rekening.length} rekening terdaftar</div>
+</div>
+<div class="rek-scroll">${rekMini}</div>
+<div class="net-grid">
+  <div class="net-card"><div class="lbl">Pemasukan</div><div class="val val-blue">${fmt(inT)}</div></div>
+  <div class="net-card"><div class="lbl">Pengeluaran</div><div class="val val-red">${fmt(outT)}</div></div>
+  <div class="net-card"><div class="lbl">Selisih</div><div class="val ${net>=0?'val-green':'val-red'}">${net>=0?'+':''}${fmt(net)}</div></div>
+</div>
+${adminTotal>0?`<div class="card" style="border-left:2px solid #FAC775;background:#FAC77508;margin-bottom:10px">
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">🏦</span>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#FAC775;text-transform:uppercase;letter-spacing:.5px">Biaya Admin Bulan Ini</div>
+        <div style="font-size:11px;color:var(--text-sec)">${txs.filter(t=>t.adminFee>0).length} transaksi dikenakan biaya</div>
+      </div>
+    </div>
+    <div style="font-size:16px;font-weight:700;color:#FAC775">${fmt(adminTotal)}</div>
+  </div>
+</div>`:''}
+
+<div class="section-title">Pemasukan Bulan Ini</div>
+<div class="card">
+${INCOME_CATS.map(cat=>{
+  const d=catMap[cat.id]||{total:0,count:0};
+  return `<div class="cat-row" onclick="S.dashView='${cat.id}';render()">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="cat-icon" style="background:${cat.color}20">${catEmoji(cat)}</div>
+      <div>
+        <div class="cat-name">${cat.name}</div>
+        <div class="bar"><div class="bar-fill" style="width:${Math.round(d.total/maxIn*100)}%;background:${cat.color}"></div></div>
+      </div>
+    </div>
+    <div class="cat-amt">
+      <div class="amt" style="color:var(--income)">${fmt(d.total)}</div>
+      <div class="count">${d.count} transaksi <i class="ti ti-chevron-right" style="font-size:10px"></i></div>
+    </div>
+  </div>`;
+}).join('')}
+</div>
+
+<div class="section-title">Pengeluaran Bulan Ini</div>
+<div class="card">
+${S.categories.map(cat=>{
+  const d=catMap[cat.id]||{total:0,count:0};
+  return `<div class="cat-row" onclick="S.dashView='${cat.id}';render()">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="cat-icon" style="background:${cat.color}20">${catEmoji(cat)}</div>
+      <div>
+        <div class="cat-name">${cat.name}</div>
+        <div class="bar"><div class="bar-fill" style="width:${Math.round(d.total/maxOut*100)}%;background:${cat.color}"></div></div>
+      </div>
+    </div>
+    <div class="cat-amt">
+      <div class="amt" style="color:var(--danger)">${fmt(d.total)}</div>
+      <div class="count">${d.count} transaksi <i class="ti ti-chevron-right" style="font-size:10px"></i></div>
+    </div>
+  </div>`;
+}).join('')}
+</div>`;
+}
+
+// ── TX ROW ───────────────────────────────────────────────────
+function txRow(t){
+  const d   = new Date(t.date);
+  const tgl = d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear();
+
+  // Handle transfer type
+  if (t.type === 'transfer') {
+    const rekFrom = getRek(t.rekId);
+    const rekTo   = getRek(t.rekIdTo);
+    return `<div class="tx-item">
+      <div class="tx-icon" style="background:#9B59B622;cursor:pointer" onclick="showEditModal('${t.id}')">🔄</div>
+      <div class="tx-info" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+        <div class="tx-name">${t.note||'Transfer'}</div>
+        <div class="tx-sub">${rekFrom.name} → ${rekTo.name} &middot; ${tgl}</div>
+        ${t.adminFee>0?`<div style="font-size:10px;color:#FAC775">+biaya admin ${fmt(t.adminFee)}</div>`:''}
+      </div>
+      <div class="tx-right" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+        <div class="tx-amt" style="color:#9B59B6">${fmt(t.amount)}</div>
+        <div class="tx-rek" style="color:#9B59B6">Transfer</div>
+      </div>
+      <button class="del-btn" onclick="delTx('${t.id}')"><i class="ti ti-trash"></i></button>
+    </div>`;
+  }
+
+  const cat = getCat(t.catId);
+  const rek = getRek(t.rekId);
+  const isIn= t.type==='income';
+  const totalAmt = isIn ? t.amount : t.amount + (t.adminFee||0);
+  return `<div class="tx-item">
+    <div class="tx-icon" style="background:${cat.color}22;cursor:pointer" onclick="showEditModal('${t.id}')">${catEmoji(cat)}</div>
+    <div class="tx-info" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+      <div class="tx-name">${t.note||cat.name}</div>
+      <div class="tx-sub">${cat.name}${t.subcat?' &middot; '+t.subcat:''} &middot; ${tgl}</div>
+      ${(!isIn && t.adminFee>0)?`<div style="font-size:10px;color:#FAC775">+biaya admin ${fmt(t.adminFee)}</div>`:''}
+    </div>
+    <div class="tx-right" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+      <div class="tx-amt ${isIn?'tx-amt-in':'tx-amt-out'}">${isIn?'+':'-'}${fmt(totalAmt)}</div>
+      <div class="tx-rek">${rek.name}</div>
+    </div>
+    <button class="del-btn" onclick="delTx('${t.id}')"><i class="ti ti-trash"></i></button>
+  </div>`;
+}
+
+// ── TX LIST ──────────────────────────────────────────────────
+function renderTxList(){
+  const el  = document.getElementById('page-txlist');
+  const all = S.transactions.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const mn  = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+
+  const exportBar = `<div style="display:flex;gap:8px;margin-bottom:10px">
+    <button class="btn btn-sm btn-primary" onclick="exportExcel('bulan')" style="flex:1;padding:9px 8px;width:auto">
+      <i class="ti ti-file-spreadsheet"></i> Export Bulan Ini
+    </button>
+    <button class="btn btn-sm" onclick="exportExcel('semua')" style="flex:1;padding:9px 8px;width:auto">
+      <i class="ti ti-file-spreadsheet"></i> Export Semua
+    </button>
+  </div>`;
+
+  if (!all.length){
+    el.innerHTML=exportBar+'<div class="empty"><i class="ti ti-receipt" style="font-size:40px;display:block;margin-bottom:8px"></i>Belum ada transaksi</div>';
+    return;
+  }
+  const groups={};
+  all.forEach(t=>{
+    const d=new Date(t.date);
+    const k=d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0');
+    if(!groups[k]) groups[k]=[];
+    groups[k].push(t);
+  });
+  el.innerHTML = exportBar +
+    Object.keys(groups).sort((a,b)=>b.localeCompare(a)).map(k=>{
+      const [yr,mo]=k.split('-');
+      const gIn  = groups[k].filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
+      const gOut = groups[k].filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
+      return `<div class="section-title">${mn[parseInt(mo)-1]} ${yr}
+        <span style="font-weight:500;margin-left:4px;color:var(--income)">+${fmt(gIn)}</span>
+        <span style="font-weight:500;margin-left:4px;color:var(--danger)">-${fmt(gOut)}</span>
+      </div>
+      <div class="card">${groups[k].map(t=>txRow(t)).join('')}</div>`;
+    }).join('');
+}
+
+// ── EXPORT EXCEL ─────────────────────────────────────────────
+function exportExcel(mode){
+  const mn=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  let txs, filename;
+  if(mode==='bulan'){txs=getMonthTx();filename='Transaksi_'+mn[S.currentMonth]+'_'+S.currentYear+'.xlsx';}
+  else{txs=S.transactions.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));filename='Transaksi_Semua.xlsx';}
+  if(!txs.length){showToast('Tidak ada transaksi');return;}
+  const rows=txs.map(t=>{
+    const d=new Date(t.date);
+    const tgl=d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear();
+    if(t.type==='transfer'){
+      const from=getRek(t.rekId);const to=getRek(t.rekIdTo||'');
+      return{
+        'Tanggal':tgl,'Tipe':'Transfer',
+        'Kategori':'Transfer','Subkategori':'-',
+        'Catatan':t.note||('Transfer: '+from.name+' → '+to.name),
+        'Rekening Asal':from.name,'Rekening Tujuan':to.name,
+        'Jumlah (Rp)':t.amount,'Biaya Admin (Rp)':t.adminFee||0
+      };
+    }
+    const cat=getCat(t.catId);const rek=getRek(t.rekId);
+    return{
+      'Tanggal':tgl,
+      'Tipe':t.type==='income'?'Pemasukan':'Pengeluaran',
+      'Kategori':cat.name,'Subkategori':t.subcat||'-',
+      'Catatan':t.note||'-','Rekening Asal':rek.name,'Rekening Tujuan':'-',
+      'Jumlah (Rp)':t.amount,'Biaya Admin (Rp)':t.adminFee||0
+    };
+  });
+  const ws=XLSX.utils.json_to_sheet(rows);
+  ws['!cols']=[{wch:12},{wch:13},{wch:20},{wch:20},{wch:28},{wch:18},{wch:18},{wch:16},{wch:16}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Transaksi');
+  XLSX.writeFile(wb,filename);
+}
+
+// ── ADD TX ───────────────────────────────────────────────────
+let AS = {type:'expense', catId:'', subcat:'', rekId:''};
+
+function renderAdd(){
+  const el    = document.getElementById('page-add');
+  const isIn  = AS.type==='income';
+  const cats  = isIn ? INCOME_CATS : S.categories;
+  const cat   = cats.find(c=>c.id===AS.catId);
+  const subs  = (cat && !isIn) ? cat.subs : [];
+  const today = new Date().toISOString().split('T')[0];
+
+  el.innerHTML = `
+<div class="section-title">Catat Transaksi</div>
+<div class="type-tabs">
+  <button class="type-tab type-tab-out ${!isIn?'active':''}" onclick="AS.type='expense';AS.catId='';AS.subcat='';renderAdd()">
+    <i class="ti ti-arrow-up-right" style="font-size:14px"></i> Pengeluaran
+  </button>
+  <button class="type-tab type-tab-in ${isIn?'active':''}" onclick="AS.type='income';AS.catId='';AS.subcat='';renderAdd()">
+    <i class="ti ti-arrow-down-left" style="font-size:14px"></i> Pemasukan
+  </button>
+</div>
+<div class="card">
+  <label>Jumlah (Rp)</label>
+  <input type="number" id="a-amount" placeholder="0" inputmode="numeric" style="font-size:22px;font-weight:700">
+  <label>${isIn?'Kategori Pemasukan':'Kategori Pengeluaran'}</label>
+  <select id="a-cat" onchange="AS.catId=this.value;AS.subcat='';renderAdd()">
+    <option value="">-- Pilih kategori --</option>
+    ${cats.map(c=>`<option value="${c.id}" ${AS.catId===c.id?'selected':''}>${catEmoji(c)} ${c.name}</option>`).join('')}
+  </select>
+  ${(!isIn && AS.catId && subs.length)?`
+  <label>Subkategori</label>
+  <select id="a-sub" onchange="AS.subcat=this.value">
+    <option value="">-- Pilih subkategori --</option>
+    ${subs.map(s=>`<option value="${s}" ${AS.subcat===s?'selected':''}>${s}</option>`).join('')}
+    <option value="__other__">Lainnya...</option>
+  </select>`:''}
+  ${AS.subcat==='__other__'?`<label>Subkategori lainnya</label><input type="text" id="a-sub-other" placeholder="Ketik subkategori">`:``}
+  <label>Rekening</label>
+  <select id="a-rek">
+    <option value="">-- Pilih rekening --</option>
+    ${S.rekening.map(r=>`<option value="${r.id}" ${AS.rekId===r.id?'selected':''}>${r.name} (${r.type})</option>`).join('')}
+  </select>
+  <label>Tanggal</label>
+  <input type="date" id="a-date" value="${today}">
+  <label>Catatan (opsional)</label>
+  <input type="text" id="a-note" placeholder="${isIn?'Misal: gaji bulan Juni':'Misal: makan siang warteg'}">
+  ${!isIn?`<label>Biaya Admin (Rp) <span style="color:var(--text-hint);font-size:11px;font-weight:400">— opsional</span></label>
+  <input type="number" id="a-admin" placeholder="0" inputmode="numeric" style="border-color:#FAC77540">`:``}
+  <button class="btn ${isIn?'btn-income':'btn-primary'}" onclick="saveTx()" style="margin-top:4px">
+    <i class="ti ti-check"></i> Simpan ${isIn?'Pemasukan':'Pengeluaran'}
+  </button>
+</div>`;
+}
+
+function saveTx(){
+  const amount = parseFloat(document.getElementById('a-amount').value);
+  const catId  = document.getElementById('a-cat').value;
+  const rekId  = document.getElementById('a-rek').value;
+  const date   = document.getElementById('a-date').value;
+  const noteEl = document.getElementById('a-note');
+  const note   = noteEl ? noteEl.value : '';
+  const subEl  = document.getElementById('a-sub');
+  let subcat   = subEl ? subEl.value : '';
+  if(subcat==='__other__'){const o=document.getElementById('a-sub-other');subcat=o?o.value:'';}
+  const adminEl= document.getElementById('a-admin');
+  const adminFee = adminEl ? (parseFloat(adminEl.value)||0) : 0;
+
+  if(!amount||amount<=0){showToast('Masukkan jumlah yang valid');return;}
+  if(!catId){showToast('Pilih kategori dulu');return;}
+  if(!rekId){showToast('Pilih rekening dulu');return;}
+
+  const isIn = AS.type==='income';
+  S.transactions.push({
+    id:'tx_'+Date.now(), amount, catId, subcat, rekId, date,
+    note:note.trim(), type:isIn?'income':'expense',
+    adminFee: isIn ? 0 : adminFee,
+  });
+  AS={type:AS.type,catId:'',subcat:'',rekId:''};
+  save();
+  showPage('dashboard');
+  showToast(isIn?'Pemasukan dicatat!':'Pengeluaran dicatat!');
+}
+
+function delTx(id){
+  if(!confirm('Hapus transaksi ini?'))return;
+  S.transactions=S.transactions.filter(t=>t.id!==id);
+  save(); render();
+}
+
+// ── EDIT TX MODAL ─────────────────────────────────────────────
+function showEditModal(id) {
+  const tx = S.transactions.find(t=>t.id===id);
+  if (!tx) return;
+  EDIT_TX_ID = id;
+
+  // Transfer edit
+  if (tx.type === 'transfer') {
+    document.getElementById('edit-modal-box').innerHTML = `
+<div class="modal-handle"></div>
+<div class="modal-title">Edit Transfer</div>
+<label>Jumlah Transfer (Rp)</label>
+<input type="number" id="em-amount" value="${tx.amount}" inputmode="numeric" style="font-size:20px;font-weight:700">
+<label>Dari Rekening</label>
+<select id="em-rek">
+  <option value="">-- Pilih rekening --</option>
+  ${S.rekening.map(r=>`<option value="${r.id}" ${tx.rekId===r.id?'selected':''}>${r.name} (${r.type})</option>`).join('')}
+</select>
+<label>Ke Rekening</label>
+<select id="em-rek-to">
+  <option value="">-- Pilih rekening --</option>
+  ${S.rekening.map(r=>`<option value="${r.id}" ${tx.rekIdTo===r.id?'selected':''}>${r.name} (${r.type})</option>`).join('')}
+</select>
+<label>Biaya Admin (Rp) <span style="color:var(--text-hint);font-size:11px;font-weight:400">— opsional</span></label>
+<input type="number" id="em-admin" value="${tx.adminFee||0}" inputmode="numeric" style="border-color:#FAC77540">
+<label>Tanggal</label>
+<input type="date" id="em-date" value="${tx.date}">
+<label>Catatan (opsional)</label>
+<input type="text" id="em-note" value="${tx.note||''}" placeholder="Catatan...">
+<div style="display:flex;gap:8px;margin-top:4px">
+  <button class="btn btn-primary" style="flex:1" onclick="saveEditTx()"><i class="ti ti-check"></i> Simpan</button>
+  <button class="btn" style="flex:1" onclick="hideEditModal()">Batal</button>
+</div>`;
+    document.getElementById('edit-modal').style.display = 'flex';
+    return;
+  }
+
+  const isIn  = tx.type === 'income';
+  const cats  = isIn ? INCOME_CATS : S.categories;
+  const cat   = cats.find(c=>c.id===tx.catId);
+  const subs  = (cat && !isIn) ? cat.subs : [];
+
+  document.getElementById('edit-modal-box').innerHTML = `
+<div class="modal-handle"></div>
+<div class="modal-title">Edit Transaksi</div>
+<div class="type-tabs" style="margin-bottom:14px">
+  <button class="type-tab type-tab-out ${!isIn?'active':''}" onclick="editSwitchType('expense')">
+    <i class="ti ti-arrow-up-right" style="font-size:14px"></i> Pengeluaran
+  </button>
+  <button class="type-tab type-tab-in ${isIn?'active':''}" onclick="editSwitchType('income')">
+    <i class="ti ti-arrow-down-left" style="font-size:14px"></i> Pemasukan
+  </button>
+</div>
+<label>Jumlah (Rp)</label>
+<input type="number" id="em-amount" value="${tx.amount}" inputmode="numeric" style="font-size:20px;font-weight:700">
+<label>${isIn?'Kategori Pemasukan':'Kategori Pengeluaran'}</label>
+<select id="em-cat" onchange="renderEditSubcat()">
+  <option value="">-- Pilih kategori --</option>
+  ${cats.map(c=>`<option value="${c.id}" ${tx.catId===c.id?'selected':''}>${catEmoji(c)} ${c.name}</option>`).join('')}
+</select>
+<div id="em-subcat-wrap">${subs.length ? `
+  <label>Subkategori</label>
+  <select id="em-sub">
+    <option value="">-- Pilih subkategori --</option>
+    ${subs.map(s=>`<option value="${s}" ${tx.subcat===s?'selected':''}>${s}</option>`).join('')}
+    <option value="__other__">Lainnya...</option>
+  </select>` : ''}</div>
+<label>Rekening</label>
+<select id="em-rek">
+  <option value="">-- Pilih rekening --</option>
+  ${S.rekening.map(r=>`<option value="${r.id}" ${tx.rekId===r.id?'selected':''}>${r.name} (${r.type})</option>`).join('')}
+</select>
+<label>Tanggal</label>
+<input type="date" id="em-date" value="${tx.date}">
+<label>Catatan (opsional)</label>
+<input type="text" id="em-note" value="${tx.note||''}" placeholder="Catatan...">
+${!isIn?`<label>Biaya Admin (Rp) <span style="color:var(--text-hint);font-size:11px;font-weight:400">— opsional</span></label>
+<input type="number" id="em-admin" value="${tx.adminFee||0}" inputmode="numeric" style="border-color:#FAC77540">`:``}
+<div style="display:flex;gap:8px;margin-top:4px">
+  <button class="btn btn-primary" style="flex:1" onclick="saveEditTx()"><i class="ti ti-check"></i> Simpan</button>
+  <button class="btn" style="flex:1" onclick="hideEditModal()">Batal</button>
+</div>`;
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+
+function editSwitchType(type) {
+  const tx = S.transactions.find(t=>t.id===EDIT_TX_ID);
+  if (tx) { tx.type = type; showEditModal(EDIT_TX_ID); }
+}
+
+function renderEditSubcat() {
+  const catId = document.getElementById('em-cat').value;
+  const tx = S.transactions.find(t=>t.id===EDIT_TX_ID);
+  const isIn = tx && tx.type === 'income';
+  const cat = S.categories.find(c=>c.id===catId);
+  const subs = (!isIn && cat) ? cat.subs : [];
+  const wrap = document.getElementById('em-subcat-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = subs.length ? `
+    <label>Subkategori</label>
+    <select id="em-sub">
+      <option value="">-- Pilih subkategori --</option>
+      ${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}
+      <option value="__other__">Lainnya...</option>
+    </select>` : '';
+}
+
+function saveEditTx() {
+  const tx = S.transactions.find(t=>t.id===EDIT_TX_ID);
+  if (!tx) return;
+
+  // Handle transfer edit separately
+  if (tx.type === 'transfer') {
+    const amount  = parseFloat(document.getElementById('em-amount').value);
+    const rekId   = document.getElementById('em-rek').value;
+    const rekIdTo = document.getElementById('em-rek-to').value;
+    const date    = document.getElementById('em-date').value;
+    const note    = document.getElementById('em-note').value;
+    const adminFee= parseFloat(document.getElementById('em-admin').value)||0;
+    if (!amount||amount<=0){showToast('Masukkan jumlah yang valid');return;}
+    if (!rekId||!rekIdTo){showToast('Pilih rekening dulu');return;}
+    if (rekId===rekIdTo){showToast('Rekening asal dan tujuan tidak boleh sama');return;}
+    tx.amount=amount; tx.rekId=rekId; tx.rekIdTo=rekIdTo;
+    tx.date=date; tx.note=note.trim(); tx.adminFee=adminFee;
+    save(); hideEditModal(); render();
+    showToast('Transfer diperbarui!');
+    return;
+  }
+
+  const amount = parseFloat(document.getElementById('em-amount').value);
+  const catId  = document.getElementById('em-cat').value;
+  const rekId  = document.getElementById('em-rek').value;
+  const date   = document.getElementById('em-date').value;
+  const note   = document.getElementById('em-note').value;
+  const subEl  = document.getElementById('em-sub');
+  let subcat   = subEl ? subEl.value : '';
+  if (subcat === '__other__') {
+    const o = document.getElementById('em-sub-other');
+    subcat = o ? o.value : '';
+  }
+  const isIn = tx.type === 'income';
+  const adminEl = document.getElementById('em-admin');
+  const adminFee = (!isIn && adminEl) ? (parseFloat(adminEl.value)||0) : 0;
+
+  if (!amount||amount<=0){showToast('Masukkan jumlah yang valid');return;}
+  if (!catId){showToast('Pilih kategori dulu');return;}
+  if (!rekId){showToast('Pilih rekening dulu');return;}
+
+  tx.amount = amount;
+  tx.catId  = catId;
+  tx.rekId  = rekId;
+  tx.date   = date;
+  tx.note   = note.trim();
+  tx.subcat = subcat;
+  tx.adminFee = adminFee;
+  save(); hideEditModal(); render();
+  showToast('Transaksi diperbarui!');
+}
+
+function hideEditModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+  EDIT_TX_ID = null;
+}
+
+// ── TRANSFER ANTAR REKENING ──────────────────────────────────
+function renderTransfer(){
+  const el = document.getElementById('page-transfer');
+  const today = new Date().toISOString().split('T')[0];
+  const transfers = S.transactions.filter(t=>t.type==='transfer')
+    .sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const totalAdmin = transfers.reduce((a,t)=>a+(t.adminFee||0),0);
+
+  el.innerHTML = `
+<div class="section-title">Transfer Antar Rekening</div>
+<div class="card">
+  <label>Jumlah Transfer (Rp)</label>
+  <input type="number" id="tf-amount" placeholder="0" inputmode="numeric" style="font-size:22px;font-weight:700">
+  <label>Dari Rekening</label>
+  <select id="tf-from">
+    <option value="">-- Pilih rekening asal --</option>
+    ${S.rekening.map(r=>`<option value="${r.id}">${r.name} &nbsp;(${r.type}) — ${fmt(getRekSaldo(r.id))}</option>`).join('')}
+  </select>
+  <label>Ke Rekening</label>
+  <select id="tf-to">
+    <option value="">-- Pilih rekening tujuan --</option>
+    ${S.rekening.map(r=>`<option value="${r.id}">${r.name} &nbsp;(${r.type}) — ${fmt(getRekSaldo(r.id))}</option>`).join('')}
+  </select>
+  <label>Biaya Admin (Rp) <span style="color:var(--text-hint);font-size:11px;font-weight:400">— opsional</span></label>
+  <input type="number" id="tf-admin" placeholder="0" inputmode="numeric" style="border-color:#FAC77540">
+  <div class="info-box" style="margin-bottom:10px"><i class="ti ti-info-circle" style="font-size:16px;flex-shrink:0"></i> Biaya admin dibebankan ke rekening asal dan tidak dihitung sebagai pengeluaran kategori.</div>
+  <label>Tanggal</label>
+  <input type="date" id="tf-date" value="${today}">
+  <label>Catatan (opsional)</label>
+  <input type="text" id="tf-note" placeholder="Misal: topup e-wallet, transfer ke istri">
+  <button class="btn btn-primary" onclick="saveTransfer()" style="margin-top:4px">
+    <i class="ti ti-transfer"></i> Simpan Transfer
+  </button>
+</div>
+
+${transfers.length?`
+<div class="section-title">Riwayat Transfer</div>
+${totalAdmin>0?`<div class="card" style="border-left:2px solid #FAC775;background:#FAC77508;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+  <div><div style="font-size:12px;font-weight:700;color:#FAC775">🏦 Total Biaya Admin Transfer</div><div style="font-size:11px;color:var(--text-sec)">${transfers.filter(t=>t.adminFee>0).length} transfer dikenakan biaya</div></div>
+  <div style="font-size:16px;font-weight:700;color:#FAC775">${fmt(totalAdmin)}</div>
+</div>`:''}
+<div class="card">
+${transfers.map(t=>{
+  const from=getRek(t.rekId); const to=getRek(t.rekIdTo||'');
+  const d=new Date(t.date);
+  const tgl=d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear();
+  return `<div class="tx-item">
+    <div class="tx-icon" style="background:#9B59B622;cursor:pointer" onclick="showEditModal('${t.id}')">🔄</div>
+    <div class="tx-info" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+      <div class="tx-name">${t.note||'Transfer'}</div>
+      <div class="tx-sub">${from.name} → ${to.name} &middot; ${tgl}</div>
+      ${t.adminFee>0?`<div style="font-size:10px;color:#FAC775">biaya admin: ${fmt(t.adminFee)}</div>`:''}
+    </div>
+    <div class="tx-right" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+      <div class="tx-amt" style="color:#9B59B6">${fmt(t.amount)}</div>
+      <div class="tx-rek" style="color:#9B59B6">Transfer</div>
+    </div>
+    <button class="del-btn" onclick="delTx('${t.id}')"><i class="ti ti-trash"></i></button>
+  </div>`;
+}).join('')}
+</div>`:'<div class="empty"><i class="ti ti-transfer" style="font-size:40px;display:block;margin-bottom:8px"></i>Belum ada riwayat transfer</div>'}`;
+}
+
+function saveTransfer(){
+  const amount = parseFloat(document.getElementById('tf-amount').value);
+  const fromId = document.getElementById('tf-from').value;
+  const toId   = document.getElementById('tf-to').value;
+  const admin  = parseFloat(document.getElementById('tf-admin').value)||0;
+  const date   = document.getElementById('tf-date').value;
+  const note   = document.getElementById('tf-note').value;
+
+  if(!amount||amount<=0){showToast('Masukkan jumlah yang valid');return;}
+  if(!fromId){showToast('Pilih rekening asal');return;}
+  if(!toId){showToast('Pilih rekening tujuan');return;}
+  if(fromId===toId){showToast('Rekening asal dan tujuan tidak boleh sama');return;}
+
+  const saldoFrom = getRekSaldo(fromId);
+  if(amount+admin>saldoFrom){showToast('Saldo rekening asal tidak cukup');return;}
+
+  S.transactions.push({
+    id:'tx_'+Date.now(), type:'transfer',
+    amount, rekId:fromId, rekIdTo:toId,
+    adminFee:admin, date, note:note.trim(),
+  });
+  save();
+  showToast('Transfer berhasil dicatat!');
+  renderTransfer();
+}
+
+// ── REKENING ─────────────────────────────────────────────────
+let REK_EDIT_ID=null;
+function renderRekening(){
+  const el    = document.getElementById('page-rekening');
+  const total = getAllRekSaldo();
+  const types = ['Tabungan','Debit','Kredit','E-Wallet','Tunai','Investasi'];
+  const editForm = r=>`
+<div class="card" style="margin-bottom:8px;border:0.5px solid var(--accent)">
+  <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:12px"><i class="ti ti-pencil"></i> Edit Rekening</div>
+  <label>Nama</label><input type="text" id="e-name" value="${r.name}">
+  <label>Tipe</label>
+  <select id="e-type">${types.map(t=>`<option ${r.type===t?'selected':''}>${t}</option>`).join('')}</select>
+  <label>Saldo Awal (Rp)</label><input type="number" id="e-saldo" value="${r.saldoAwal||0}" inputmode="numeric">
+  <div style="font-size:11px;color:var(--text-sec);margin-top:-6px;margin-bottom:10px">Saldo saat ini: <b style="color:${r.color}">${fmt(getRekSaldo(r.id))}</b> (otomatis dari transaksi)</div>
+  <label>Warna</label><input type="color" id="e-color" value="${r.color||'#1D9E75'}" style="height:44px;padding:4px">
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <button class="btn btn-primary" style="flex:1" onclick="saveEditRek('${r.id}')"><i class="ti ti-check"></i> Simpan</button>
+    <button class="btn" style="flex:1" onclick="REK_EDIT_ID=null;renderRekening()">Batal</button>
+  </div>
+</div>`;
+
+  el.innerHTML=`
+<div class="hero">
+  <div class="lbl">Total Semua Saldo</div>
+  <div class="amt">${fmt(total)}</div>
+  <div class="sub">${S.rekening.length} rekening terdaftar</div>
+</div>
+${(()=>{const totalAdmin=S.transactions.reduce((a,t)=>a+(t.adminFee||0),0);return totalAdmin>0?`<div class="card" style="border-left:2px solid #FAC775;background:#FAC77508;margin-bottom:10px">
+  <div style="font-size:12px;font-weight:700;color:#FAC775;margin-bottom:6px">🏦 Rekap Biaya Admin (Semua Waktu)</div>
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <div style="font-size:11px;color:var(--text-sec)">${S.transactions.filter(t=>t.adminFee>0).length} transaksi dikenakan biaya admin</div>
+    <div style="font-size:18px;font-weight:700;color:#FAC775">${fmt(totalAdmin)}</div>
+  </div>
+  <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+    ${S.rekening.map(r=>{const a=S.transactions.filter(t=>t.rekId===r.id&&t.adminFee>0).reduce((s,t)=>s+(t.adminFee||0),0);return a>0?`<span style="background:#FAC77520;color:#FAC775;padding:3px 10px;border-radius:8px;font-size:11px">${r.name}: ${fmt(a)}</span>`:''}).join('')}
+  </div>
+</div>`:'';})()}
+<div class="section-title">Rekening Saya</div>
+${S.rekening.map(r=>{
+  if(REK_EDIT_ID===r.id) return editForm(r);
+  const keluar=S.transactions.filter(t=>t.rekId===r.id&&t.type!=='income').reduce((a,t)=>a+t.amount,0);
+  const masuk =S.transactions.filter(t=>t.rekId===r.id&&t.type==='income').reduce((a,t)=>a+t.amount,0);
+  return `<div class="rek-card" style="display:flex;align-items:center;gap:12px">
+    <div style="width:42px;height:42px;border-radius:50%;background:${r.color}22;display:flex;align-items:center;justify-content:center;color:${r.color};font-size:20px;flex-shrink:0">
+      <i class="ti ti-wallet"></i>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.name}</div>
+      <div style="font-size:11px;color:var(--text-sec)">${r.type}</div>
+      <div style="font-size:16px;font-weight:700;color:${r.color};margin-top:2px">${fmt(getRekSaldo(r.id))}</div>
+      <div style="font-size:11px;margin-top:1px">
+        <span style="color:var(--income)">+${fmt(masuk)}</span>
+        <span style="color:var(--text-hint);margin:0 4px">&middot;</span>
+        <span style="color:var(--danger)">-${fmt(keluar)}</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
+      <button class="del-btn" onclick="delRek('${r.id}')"><i class="ti ti-trash"></i></button>
+      <button class="btn btn-sm" onclick="REK_EDIT_ID='${r.id}';renderRekening()" style="font-size:11px;padding:5px 10px">
+        <i class="ti ti-pencil" style="font-size:11px"></i> Edit
+      </button>
+    </div>
+  </div>`;
+}).join('')}
+
+<div class="card" style="margin-top:4px">
+  <div style="font-size:15px;font-weight:600;margin-bottom:14px">Tambah Rekening Baru</div>
+  <label>Nama Rekening</label>
+  <input type="text" id="rek-name" placeholder="Misal: GoPay, BRI Tabungan">
+  <label>Tipe</label>
+  <select id="rek-type">${types.map(t=>`<option>${t}</option>`).join('')}</select>
+  <label>Saldo Awal (Rp)</label>
+  <input type="number" id="rek-saldo" placeholder="0" inputmode="numeric">
+  <label>Warna</label>
+  <input type="color" id="rek-color" value="#1D9E75" style="height:44px;padding:4px">
+  <button class="btn btn-primary" onclick="addRek()"><i class="ti ti-plus"></i> Tambah Rekening</button>
+</div>`;
+}
+
+function saveEditRek(id){
+  const rek=S.rekening.find(r=>r.id===id);if(!rek)return;
+  const name=document.getElementById('e-name').value.trim();
+  if(!name){showToast('Nama tidak boleh kosong');return;}
+  rek.name=name;rek.type=document.getElementById('e-type').value;
+  rek.saldoAwal=parseFloat(document.getElementById('e-saldo').value)||0;
+  rek.color=document.getElementById('e-color').value;
+  REK_EDIT_ID=null; save(); renderRekening();
+}
+function addRek(){
+  const name=document.getElementById('rek-name').value.trim();
+  if(!name){showToast('Masukkan nama rekening');return;}
+  S.rekening.push({
+    id:'r_'+Date.now(),name,
+    type:document.getElementById('rek-type').value,
+    color:document.getElementById('rek-color').value,
+    saldoAwal:parseFloat(document.getElementById('rek-saldo').value)||0,
+  });
+  save(); renderRekening();
+}
+function delRek(id){
+  if(!confirm('Hapus rekening ini?'))return;
+  S.rekening=S.rekening.filter(r=>r.id!==id);
+  if(REK_EDIT_ID===id) REK_EDIT_ID=null;
+  save(); renderRekening();
+}
+
+// ── SETTINGS ─────────────────────────────────────────────────
+function renderSettings(){
+  const el=document.getElementById('page-settings');
+  el.innerHTML=`
+<div class="section-title">Kelola Kategori Pengeluaran</div>
+${S.categories.map((cat,ci)=>`
+<div class="card" style="border-left:2px solid ${cat.color}">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:9px">
+      <span style="font-size:20px">${catEmoji(cat)}</span>
+      <span style="font-size:14px;font-weight:600">${cat.name}</span>
+    </div>
+    ${ci>=DEFAULT_CATS.length
+      ?`<button class="del-btn" onclick="delCat('${cat.id}')"><i class="ti ti-trash"></i></button>`
+      :`<span style="font-size:10px;color:var(--text-hint);background:var(--input-bg);padding:2px 8px;border-radius:8px">default</span>`}
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">
+    ${cat.subs.map((s,si)=>`
+    <span style="background:${cat.color}22;color:${cat.color};padding:4px 10px;border-radius:10px;font-size:12px;display:inline-flex;align-items:center;gap:5px">
+      ${s}
+      <button onclick="delSub(${ci},${si})" style="background:none;border:none;cursor:pointer;color:${cat.color};font-size:14px;padding:0;line-height:1;opacity:.7">x</button>
+    </span>`).join('')}
+  </div>
+  <div style="display:flex;gap:8px">
+    <input type="text" id="newsub-${ci}" placeholder="Tambah subkategori..." style="margin:0;flex:1;font-size:14px">
+    <button class="btn btn-sm btn-primary" onclick="addSub(${ci})" style="width:auto"><i class="ti ti-plus"></i></button>
+  </div>
+</div>`).join('')}
+
+<div class="card">
+  <div style="font-size:15px;font-weight:600;margin-bottom:14px">Tambah Kategori Baru</div>
+  <label>Nama Kategori</label>
+  <input type="text" id="newcat-name" placeholder="Nama kategori">
+  <label>Ikon (emoji)</label>
+  <input type="text" id="newcat-icon" placeholder="Ketik emoji, misal: 🎯" style="font-size:20px">
+  <label>Warna</label>
+  <input type="color" id="newcat-color" value="#5DCAA5" style="height:44px;padding:4px">
+  <button class="btn btn-primary" onclick="addCat()"><i class="ti ti-plus"></i> Tambah Kategori</button>
+</div>
+
+<div class="card">
+  <div style="font-size:15px;font-weight:600;margin-bottom:8px">Reset Data</div>
+  <button class="btn btn-danger" onclick="resetData()"><i class="ti ti-trash"></i> Reset Semua Data</button>
+</div>`;
+}
+
+function addSub(ci){
+  const inp=document.getElementById('newsub-'+ci);
+  const val=inp.value.trim();if(!val)return;
+  if(!S.categories[ci].subs.includes(val)){S.categories[ci].subs.push(val);save();renderSettings();}
+  else showToast('Subkategori sudah ada');
+}
+function delSub(ci,si){S.categories[ci].subs.splice(si,1);save();renderSettings();}
+function addCat(){
+  const n=document.getElementById('newcat-name').value.trim();
+  const i=document.getElementById('newcat-icon').value.trim()||'\uD83D\uDCE6';
+  const c=document.getElementById('newcat-color').value;
+  if(!n){showToast('Masukkan nama kategori');return;}
+  S.categories.push({id:'cat_'+Date.now(),name:n,emoji:i,color:c,subs:[]});
+  save();renderSettings();
+}
+function delCat(id){
+  if(!confirm('Hapus kategori ini?'))return;
+  S.categories=S.categories.filter(c=>c.id!==id);
+  save();renderSettings();
+}
+function resetData(){
+  if(!confirm('Reset semua data? Tidak bisa dibatalkan!'))return;
+  if(!confirm('Yakin benar-benar reset?'))return;
+  localStorage.removeItem(LS_KEY);
+  loadLocal();
+  render();
+  showToast('Data berhasil direset');
+}
+
+// ── START ────────────────────────────────────────────────────
+initApp();
+</script>
+</body>
+</html>
