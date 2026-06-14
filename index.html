@@ -118,6 +118,16 @@ label{font-size:12px;color:var(--text-sec);display:block;margin-bottom:5px;font-
 .tab3{display:flex;background:var(--input-bg);border-radius:12px;padding:3px;margin-bottom:14px;gap:2px}
 .tab3-btn{flex:1;padding:8px 4px;border:none;background:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--text-sec)}
 .tab3-btn.active{background:var(--card-bg);color:var(--text-pri)}
+/* Cat manage item */
+.cat-manage-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--card-border)}
+.cat-manage-item:last-child{border-bottom:none}
+.cat-manage-emoji{font-size:22px;width:36px;text-align:center;flex-shrink:0}
+.cat-manage-name{flex:1;font-size:14px;font-weight:500}
+.cat-manage-actions{display:flex;gap:4px;flex-shrink:0}
+.tag-chip{display:inline-flex;align-items:center;gap:4px;background:var(--input-bg);border:0.5px solid var(--input-border);border-radius:20px;padding:4px 10px;font-size:12px;margin:3px 3px 3px 0;cursor:pointer}
+.tag-chip .chip-del{color:var(--text-hint);font-size:14px;line-height:1;padding:0 0 0 4px}
+.tag-chip .chip-del:hover{color:var(--danger)}
+.chip-wrap{display:flex;flex-wrap:wrap;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -140,9 +150,15 @@ label{font-size:12px;color:var(--text-sec);display:block;margin-bottom:5px;font-
   </div>
 </div>
 
+<!-- Edit TX Modal -->
 <div class="modal-overlay" id="edit-modal" style="display:none" onclick="if(event.target===this)hideEditModal()">
   <div class="modal-box" id="edit-modal-box"></div>
 </div>
+<!-- Edit Category Modal -->
+<div class="modal-overlay" id="cat-modal" style="display:none" onclick="if(event.target===this)hideCatModal()">
+  <div class="modal-box" id="cat-modal-box"></div>
+</div>
+<!-- Import Modal -->
 <div class="modal-overlay" id="import-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
   <div class="modal-box">
     <div class="modal-handle"></div>
@@ -161,11 +177,11 @@ label{font-size:12px;color:var(--text-sec);display:block;margin-bottom:5px;font-
 // ── CONFIG ──────────────────────────────────────────────────
 const LS_KEY = 'exptracker_v6'; // JANGAN GANTI — agar data lama tetap terbaca
 
-const INCOME_CATS = [
-  {id:'gaji',    name:'Gaji',      emoji:'\uD83D\uDCBC', color:'#378ADD'},
-  {id:'tpp',     name:'TPP',       emoji:'\uD83C\uDFDB', color:'#5B8FD4'},
-  {id:'honor',   name:'Honor',     emoji:'\uD83C\uDF96', color:'#6DB3E8'},
-  {id:'inc_lain',name:'Lain-lain', emoji:'\uD83D\uDCB0', color:'#85C1E9'},
+const DEFAULT_INCOME_CATS = [
+  {id:'gaji',    name:'Gaji',      emoji:'\uD83D\uDCBC', color:'#378ADD', subs:[]},
+  {id:'tpp',     name:'TPP',       emoji:'\uD83C\uDFDB', color:'#5B8FD4', subs:[]},
+  {id:'honor',   name:'Honor',     emoji:'\uD83C\uDF96', color:'#6DB3E8', subs:[]},
+  {id:'inc_lain',name:'Lain-lain', emoji:'\uD83D\uDCB0', color:'#85C1E9', subs:[]},
 ];
 const DEFAULT_CATS = [
   {id:'makan',    name:'Makan',             emoji:'\uD83C\uDF5C', color:'#FAC775', subs:['Makan di Luar','Jajan','Nongkrong']},
@@ -180,18 +196,20 @@ const DEFAULT_CATS = [
 ];
 
 let S = {
-  transactions:[], rekening:[], categories:[],
+  transactions:[], rekening:[], categories:[], incomeCategories:[],
   currentMonth:new Date().getMonth(),
   currentYear:new Date().getFullYear(),
   activePage:'dashboard',
-  dashView:null,   // null | catId | 'rek:rekId'
-  budgets:{},      // {catId: amount}
+  dashView:null,
+  budgets:{},
   txSearch:'',
-  txFilter:'all',  // all | income | expense | transfer
+  txFilter:'all',
 };
 let EDIT_TX_ID = null;
 let AS = {type:'expense', catId:'', subcat:'', rekId:''};
 let REK_EDIT_ID = null;
+// Cat modal state
+let CAT_MODAL = { type:'expense', catId:null }; // type: 'expense'|'income'
 
 // ── INIT ──────────────────────────────────────────────────
 function initApp(){ loadLocal(); render(); }
@@ -201,7 +219,10 @@ function loadLocal(){
     const d = localStorage.getItem(LS_KEY);
     if(d) Object.assign(S, JSON.parse(d));
     if(!S.categories||!S.categories.length) S.categories=JSON.parse(JSON.stringify(DEFAULT_CATS));
-    S.categories.forEach(c=>{ if(!c.emoji) c.emoji=c.icon||'\uD83D\uDCE6'; });
+    S.categories.forEach(c=>{ if(!c.emoji) c.emoji=c.icon||'\uD83D\uDCE6'; if(!c.subs) c.subs=[]; });
+    // Init income categories (new — migrate from hardcoded)
+    if(!S.incomeCategories||!S.incomeCategories.length) S.incomeCategories=JSON.parse(JSON.stringify(DEFAULT_INCOME_CATS));
+    S.incomeCategories.forEach(c=>{ if(!c.emoji) c.emoji='\uD83D\uDCB0'; if(!c.subs) c.subs=[]; });
     if(!S.rekening||!S.rekening.length) S.rekening=[
       {id:'r1',name:'BCA Tabungan',type:'Tabungan',color:'#1D9E75',saldoAwal:0},
       {id:'r2',name:'BCA Debit',   type:'Debit',   color:'#378ADD',saldoAwal:0},
@@ -213,7 +234,10 @@ function loadLocal(){
     S.currentMonth=new Date().getMonth();
     S.currentYear=new Date().getFullYear();
     S.txSearch=''; S.txFilter='all';
-  } catch(e){ S.categories=JSON.parse(JSON.stringify(DEFAULT_CATS)); }
+  } catch(e){
+    S.categories=JSON.parse(JSON.stringify(DEFAULT_CATS));
+    S.incomeCategories=JSON.parse(JSON.stringify(DEFAULT_INCOME_CATS));
+  }
 }
 function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){} }
 
@@ -225,12 +249,17 @@ function showToast(msg){ const el=document.getElementById('toast');el.textConten
 
 // ── HELPERS ─────────────────────────────────────────────
 function fmt(n){ return 'Rp '+Math.round(n).toLocaleString('id-ID'); }
-function getCat(id){ return S.categories.find(c=>c.id===id)||INCOME_CATS.find(c=>c.id===id)||{name:'?',emoji:'\u2753',color:'#888',subs:[]}; }
+function getCat(id){
+  return S.categories.find(c=>c.id===id)
+      || S.incomeCategories.find(c=>c.id===id)
+      || {name:'?',emoji:'\u2753',color:'#888',subs:[]};
+}
 function getRek(id){ return S.rekening.find(r=>r.id===id)||{name:'?',color:'#888'}; }
 function catEmoji(cat){ return cat.emoji||'\uD83D\uDCE6'; }
 function monthName(){ const m=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']; return m[S.currentMonth]+' '+S.currentYear; }
 function getMonthTx(){ return S.transactions.filter(t=>{ const d=new Date(t.date); return d.getMonth()===S.currentMonth&&d.getFullYear()===S.currentYear; }); }
 function fmtDate(str){ const d=new Date(str); return d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear(); }
+function genId(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7); }
 
 function getRekSaldo(rekId){
   const rek=S.rekening.find(r=>r.id===rekId); if(!rek) return 0;
@@ -320,7 +349,6 @@ function renderDashboard(){
   const txs=getMonthTx();
   const outT=txs.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
   const inT=txs.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
-  const adminTotal=txs.reduce((a,t)=>a+(t.adminFee||0),0);
   const net=inT-outT;
   const totalSaldo=getAllRekSaldo();
 
@@ -329,7 +357,7 @@ function renderDashboard(){
     const rekId=S.dashView.slice(4);
     const rek=getRek(rekId);
     const rekTxs=S.transactions.filter(t=>t.rekId===rekId||t.rekIdTo===rekId)
-      .sort((a,b)=>b.id.localeCompare(a.id)); // urut waktu input
+      .sort((a,b)=>b.id.localeCompare(a.id));
     const rekIn=rekTxs.filter(t=>t.type==='income'||(t.type==='transfer'&&t.rekIdTo===rekId)).reduce((a,t)=>a+t.amount,0);
     const rekOut=rekTxs.filter(t=>(t.type==='expense'&&t.rekId===rekId)||(t.type==='transfer'&&t.rekId===rekId)).reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
     el.innerHTML=`
@@ -360,12 +388,12 @@ ${rekTxs.length?rekTxs.map(t=>txRow(t,false)).join(''):'<div class="empty">Belum
 
   // ── Drill-down: kategori
   if(S.dashView){
-    const isIncCat=!!INCOME_CATS.find(c=>c.id===S.dashView);
+    const isIncCat=!!S.incomeCategories.find(c=>c.id===S.dashView);
     const cat=getCat(S.dashView);
     const catTxs=txs.filter(t=>t.catId===S.dashView).sort((a,b)=>b.id.localeCompare(a.id));
     const catTot=catTxs.reduce((a,t)=>a+t.amount,0);
     const subMap={};
-    if(!isIncCat) cat.subs.forEach(s=>subMap[s]=0);
+    (cat.subs||[]).forEach(s=>subMap[s]=0);
     catTxs.forEach(t=>{ subMap[t.subcat]=(subMap[t.subcat]||0)+t.amount; });
     const allSubs=Object.entries(subMap).filter(([,v])=>v>0);
     const maxSub=Math.max(...Object.values(subMap),1);
@@ -395,10 +423,10 @@ ${allSubs.map(([sub,amt])=>`<div class="subcat-row">
   // ── Main dashboard
   const catMap={};
   S.categories.forEach(c=>catMap[c.id]={total:0,count:0});
-  INCOME_CATS.forEach(c=>catMap[c.id]={total:0,count:0});
+  S.incomeCategories.forEach(c=>catMap[c.id]={total:0,count:0});
   txs.forEach(t=>{ if(t.type!=='transfer'&&catMap[t.catId]){catMap[t.catId].total+=t.amount+(t.adminFee||0);catMap[t.catId].count++;} });
   const maxOut=Math.max(...S.categories.map(c=>(catMap[c.id]||{}).total||0),1);
-  const maxIn=Math.max(...INCOME_CATS.map(c=>(catMap[c.id]||{}).total||0),1);
+  const maxIn=Math.max(...S.incomeCategories.map(c=>(catMap[c.id]||{}).total||0),1);
 
   // Chart 6 bulan terakhir
   const chartData=[];
@@ -437,15 +465,6 @@ ${allSubs.map(([sub,amt])=>`<div class="subcat-row">
   <div class="net-card"><div class="lbl">Pengeluaran</div><div class="val val-red">${fmt(outT)}</div></div>
   <div class="net-card"><div class="lbl">Selisih</div><div class="val ${net>=0?'val-green':'val-red'}">${net>=0?'+':''}${fmt(net)}</div></div>
 </div>
-${adminTotal>0?`<div class="card" style="border-left:2px solid var(--admin);background:#FAC77508;margin-bottom:10px">
-  <div style="display:flex;align-items:center;justify-content:space-between">
-    <div style="display:flex;align-items:center;gap:8px">
-      <span style="font-size:18px">🏦</span>
-      <div><div style="font-size:12px;font-weight:700;color:var(--admin)">Biaya Admin Bulan Ini</div><div style="font-size:11px;color:var(--text-sec)">${txs.filter(t=>t.adminFee>0).length} transaksi</div></div>
-    </div>
-    <div style="font-size:16px;font-weight:700;color:var(--admin)">${fmt(adminTotal)}</div>
-  </div>
-</div>`:''}
 
 <div class="section-title">Tren 6 Bulan Terakhir</div>
 <div class="card">
@@ -486,7 +505,7 @@ ${S.categories.filter(c=>S.budgets[c.id]).map(cat=>{
 
 <div class="section-title">Pemasukan Bulan Ini</div>
 <div class="card">
-${INCOME_CATS.map(cat=>{
+${S.incomeCategories.map(cat=>{
   const d=catMap[cat.id]||{total:0,count:0};
   return `<div class="cat-row" onclick="S.dashView='${cat.id}';render()">
     <div style="display:flex;align-items:center;gap:10px">
@@ -519,11 +538,7 @@ ${S.categories.map(cat=>{
 function renderTxList(){
   const el=document.getElementById('page-txlist');
   const mn=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-
-  // Sort by input time (id contains timestamp)
   let all=S.transactions.slice().sort((a,b)=>b.id.localeCompare(a.id));
-
-  // Filter
   if(S.txFilter!=='all') all=all.filter(t=>t.type===S.txFilter);
   if(S.txSearch){
     const q=S.txSearch.toLowerCase();
@@ -536,13 +551,11 @@ function renderTxList(){
              fmt(t.amount).includes(q);
     });
   }
-
   const exportBar=`<div style="display:flex;gap:8px;margin-bottom:10px">
     <button class="btn btn-sm btn-primary" onclick="exportExcel('bulan')" style="flex:1;padding:9px 8px;width:auto"><i class="ti ti-file-spreadsheet"></i> Export Bulan</button>
     <button class="btn btn-sm" onclick="exportExcel('semua')" style="flex:1;padding:9px 8px;width:auto"><i class="ti ti-file-spreadsheet"></i> Export Semua</button>
     <button class="btn btn-sm" onclick="document.getElementById('import-modal').style.display='flex'" style="padding:9px 10px;width:auto"><i class="ti ti-file-import"></i></button>
   </div>`;
-
   const searchBar=`
 <div class="search-wrap">
   <i class="ti ti-search search-icon"></i>
@@ -554,13 +567,10 @@ function renderTxList(){
   <button class="tab3-btn ${S.txFilter==='expense'?'active':''}" onclick="S.txFilter='expense';renderTxList()">Pengeluaran</button>
   <button class="tab3-btn ${S.txFilter==='transfer'?'active':''}" onclick="S.txFilter='transfer';renderTxList()">Transfer</button>
 </div>`;
-
   if(!all.length){
     el.innerHTML=exportBar+searchBar+'<div class="empty"><i class="ti ti-receipt" style="font-size:40px;display:block;margin-bottom:8px"></i>'+(S.txSearch?'Tidak ada hasil pencarian':'Belum ada transaksi')+'</div>';
     return;
   }
-
-  // Group by year-month (based on date field, but within group sorted by input time = id)
   const groups={};
   all.forEach(t=>{
     const d=new Date(t.date);
@@ -568,7 +578,6 @@ function renderTxList(){
     if(!groups[k]) groups[k]=[];
     groups[k].push(t);
   });
-
   el.innerHTML=exportBar+searchBar+
     Object.keys(groups).sort((a,b)=>b.localeCompare(a)).map(k=>{
       const [yr,mo]=k.split('-');
@@ -619,11 +628,10 @@ function doImport(){
         if(!row['Jumlah (Rp)']||!row['Tipe']) return;
         const tipe=(row['Tipe']||'').toLowerCase();
         const tgl=row['Tanggal']||new Date().toISOString().split('T')[0];
-        // parse date dd/mm/yyyy
         let dateStr=tgl;
         if(tgl.includes('/')){const[d,m,y]=tgl.split('/');dateStr=`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;}
         const catName=row['Kategori']||'';
-        const cat=S.categories.find(c=>c.name===catName)||INCOME_CATS.find(c=>c.name===catName)||S.categories[S.categories.length-1];
+        const cat=S.categories.find(c=>c.name===catName)||S.incomeCategories.find(c=>c.name===catName)||S.categories[S.categories.length-1];
         const rekName=row['Rekening Asal']||row['Rekening']||'';
         const rek=S.rekening.find(r=>r.name===rekName)||S.rekening[0];
         if(tipe==='transfer'){
@@ -646,9 +654,9 @@ function doImport(){
 function renderAdd(){
   const el=document.getElementById('page-add');
   const isIn=AS.type==='income';
-  const cats=isIn?INCOME_CATS:S.categories;
+  const cats=isIn?S.incomeCategories:S.categories;
   const cat=cats.find(c=>c.id===AS.catId);
-  const subs=(cat&&!isIn)?cat.subs:[];
+  const subs=(cat&&cat.subs&&cat.subs.length)?cat.subs:[];
   const today=new Date().toISOString().split('T')[0];
   el.innerHTML=`
 <div class="section-title">Catat Transaksi</div>
@@ -664,7 +672,7 @@ function renderAdd(){
     <option value="">-- Pilih kategori --</option>
     ${cats.map(c=>`<option value="${c.id}" ${AS.catId===c.id?'selected':''}>${catEmoji(c)} ${c.name}</option>`).join('')}
   </select>
-  ${(!isIn&&AS.catId&&subs.length)?`
+  ${(AS.catId&&subs.length)?`
   <label>Subkategori</label>
   <select id="a-sub" onchange="AS.subcat=this.value">
     <option value="">-- Pilih subkategori --</option>
@@ -754,9 +762,9 @@ function showEditModal(id){
     document.getElementById('edit-modal').style.display='flex'; return;
   }
   const isIn=tx.type==='income';
-  const cats=isIn?INCOME_CATS:S.categories;
+  const cats=isIn?S.incomeCategories:S.categories;
   const cat=cats.find(c=>c.id===tx.catId);
-  const subs=(cat&&!isIn)?cat.subs:[];
+  const subs=(cat&&cat.subs&&cat.subs.length)?cat.subs:[];
   document.getElementById('edit-modal-box').innerHTML=`
 <div class="modal-handle"></div>
 <div class="modal-title">Edit Transaksi</div>
@@ -789,290 +797,407 @@ ${!isIn?`<label>Biaya Admin (Rp)</label><input type="number" id="em-admin" value
   document.getElementById('edit-modal').style.display='flex';
 }
 
-function editSwitchType(type){const tx=S.transactions.find(t=>t.id===EDIT_TX_ID);if(tx){tx.type=type;showEditModal(EDIT_TX_ID);}}
-function renderEditSubcat(){
-  const catId=document.getElementById('em-cat').value;
-  const tx=S.transactions.find(t=>t.id===EDIT_TX_ID);
-  const isIn=tx&&tx.type==='income';
-  const cat=S.categories.find(c=>c.id===catId);
-  const subs=(!isIn&&cat)?cat.subs:[];
-  const wrap=document.getElementById('em-subcat-wrap'); if(!wrap) return;
-  wrap.innerHTML=subs.length?`<label>Subkategori</label><select id="em-sub"><option value="">-- Pilih --</option>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}<option value="__other__">Lainnya...</option></select>`:'';
+function editSwitchType(newType){
+  const tx=S.transactions.find(t=>t.id===EDIT_TX_ID); if(!tx) return;
+  const amtEl=document.getElementById('em-amount');
+  const rekEl=document.getElementById('em-rek');
+  const dateEl=document.getElementById('em-date');
+  const noteEl=document.getElementById('em-note');
+  const tempTx={...tx,
+    type:newType,
+    amount:parseFloat(amtEl?amtEl.value:tx.amount)||tx.amount,
+    rekId:rekEl?rekEl.value:tx.rekId,
+    date:dateEl?dateEl.value:tx.date,
+    note:noteEl?noteEl.value:tx.note,
+    catId:'',subcat:''
+  };
+  S.transactions=S.transactions.map(t=>t.id===EDIT_TX_ID?tempTx:t);
+  showEditModal(EDIT_TX_ID);
 }
+
+function renderEditSubcat(){
+  const catSel=document.getElementById('em-cat'); if(!catSel) return;
+  const catId=catSel.value;
+  const tx=S.transactions.find(t=>t.id===EDIT_TX_ID);
+  const isIn=tx?tx.type==='income':false;
+  const cats=isIn?S.incomeCategories:S.categories;
+  const cat=cats.find(c=>c.id===catId);
+  const subs=(cat&&cat.subs&&cat.subs.length)?cat.subs:[];
+  const wrap=document.getElementById('em-subcat-wrap');
+  if(wrap) wrap.innerHTML=subs.length?`<label>Subkategori</label><select id="em-sub"><option value="">-- Pilih --</option>${subs.map(s=>`<option value="${s}">${s}</option>`).join('')}<option value="__other__">Lainnya...</option></select>`:'';
+}
+
 function saveEditTx(){
   const tx=S.transactions.find(t=>t.id===EDIT_TX_ID); if(!tx) return;
+  const amount=parseFloat(document.getElementById('em-amount').value)||0;
+  const rekEl=document.getElementById('em-rek');
+  const dateEl=document.getElementById('em-date');
+  const noteEl=document.getElementById('em-note');
   if(tx.type==='transfer'){
-    const amount=parseFloat(document.getElementById('em-amount').value);
-    const rekId=document.getElementById('em-rek').value;
-    const rekIdTo=document.getElementById('em-rek-to').value;
-    const date=document.getElementById('em-date').value;
-    const note=document.getElementById('em-note').value;
-    const adminFee=parseFloat(document.getElementById('em-admin').value)||0;
-    if(!amount||amount<=0){showToast('Jumlah tidak valid');return;}
-    if(!rekId||!rekIdTo){showToast('Pilih rekening');return;}
-    if(rekId===rekIdTo){showToast('Rekening tidak boleh sama');return;}
-    tx.amount=amount;tx.rekId=rekId;tx.rekIdTo=rekIdTo;tx.date=date;tx.note=note.trim();tx.adminFee=adminFee;
-    save();hideEditModal();render();showToast('Transfer diperbarui!');return;
+    const rekToEl=document.getElementById('em-rek-to');
+    const adminEl=document.getElementById('em-admin');
+    tx.amount=amount;
+    tx.rekId=rekEl?rekEl.value:tx.rekId;
+    tx.rekIdTo=rekToEl?rekToEl.value:tx.rekIdTo;
+    tx.adminFee=adminEl?(parseFloat(adminEl.value)||0):0;
+    tx.date=dateEl?dateEl.value:tx.date;
+    tx.note=noteEl?noteEl.value:tx.note;
+  } else {
+    const catEl=document.getElementById('em-cat');
+    const subEl=document.getElementById('em-sub');
+    const adminEl=document.getElementById('em-admin');
+    let subcat=subEl?subEl.value:'';
+    if(subcat==='__other__'){
+      const o=document.getElementById('em-sub-other');
+      subcat=o?o.value:'';
+    }
+    tx.amount=amount;
+    tx.catId=catEl?catEl.value:tx.catId;
+    tx.subcat=subcat;
+    tx.rekId=rekEl?rekEl.value:tx.rekId;
+    tx.date=dateEl?dateEl.value:tx.date;
+    tx.note=noteEl?noteEl.value.trim():tx.note;
+    tx.adminFee=adminEl?(parseFloat(adminEl.value)||0):0;
   }
-  const amount=parseFloat(document.getElementById('em-amount').value);
-  const catId=document.getElementById('em-cat').value;
-  const rekId=document.getElementById('em-rek').value;
-  const date=document.getElementById('em-date').value;
-  const note=document.getElementById('em-note').value;
-  const subEl=document.getElementById('em-sub'); let subcat=subEl?subEl.value:'';
-  if(subcat==='__other__'){const o=document.getElementById('em-sub-other');subcat=o?o.value:'';}
-  const isIn=tx.type==='income';
-  const adminEl=document.getElementById('em-admin');
-  const adminFee=(!isIn&&adminEl)?(parseFloat(adminEl.value)||0):0;
-  if(!amount||amount<=0){showToast('Jumlah tidak valid');return;}
-  if(!catId){showToast('Pilih kategori');return;}
-  if(!rekId){showToast('Pilih rekening');return;}
-  tx.amount=amount;tx.catId=catId;tx.rekId=rekId;tx.date=date;tx.note=note.trim();tx.subcat=subcat;tx.adminFee=adminFee;
-  save();hideEditModal();render();showToast('Transaksi diperbarui!');
+  save(); hideEditModal(); render(); showToast('Transaksi diperbarui!');
 }
-function hideEditModal(){document.getElementById('edit-modal').style.display='none';EDIT_TX_ID=null;}
 
-// ── TRANSFER ─────────────────────────────────────────────
+function hideEditModal(){
+  document.getElementById('edit-modal').style.display='none';
+  EDIT_TX_ID=null;
+}
+
+// ── TRANSFER PAGE ────────────────────────────────────────
 function renderTransfer(){
   const el=document.getElementById('page-transfer');
   const today=new Date().toISOString().split('T')[0];
-  const transfers=S.transactions.filter(t=>t.type==='transfer').sort((a,b)=>b.id.localeCompare(a.id));
-  const totalAdmin=transfers.reduce((a,t)=>a+(t.adminFee||0),0);
   el.innerHTML=`
 <div class="section-title">Transfer Antar Rekening</div>
 <div class="card">
-  <label>Jumlah Transfer (Rp)</label>
-  <input type="number" id="tf-amount" placeholder="0" inputmode="numeric" style="font-size:22px;font-weight:700">
   <label>Dari Rekening</label>
-  <select id="tf-from">
+  <select id="t-from">
     <option value="">-- Pilih rekening asal --</option>
-    ${S.rekening.map(r=>`<option value="${r.id}">${r.name} (${r.type}) — ${fmt(getRekSaldo(r.id))}</option>`).join('')}
+    ${S.rekening.map(r=>`<option value="${r.id}">${r.name} · ${fmt(getRekSaldo(r.id))}</option>`).join('')}
   </select>
   <label>Ke Rekening</label>
-  <select id="tf-to">
+  <select id="t-to">
     <option value="">-- Pilih rekening tujuan --</option>
-    ${S.rekening.map(r=>`<option value="${r.id}">${r.name} (${r.type}) — ${fmt(getRekSaldo(r.id))}</option>`).join('')}
+    ${S.rekening.map(r=>`<option value="${r.id}">${r.name} · ${fmt(getRekSaldo(r.id))}</option>`).join('')}
   </select>
+  <label>Jumlah Transfer (Rp)</label>
+  <input type="number" id="t-amount" placeholder="0" inputmode="numeric" style="font-size:22px;font-weight:700">
   <label>Biaya Admin (Rp) <span style="color:var(--text-hint);font-size:11px;font-weight:400">— opsional</span></label>
-  <input type="number" id="tf-admin" placeholder="0" inputmode="numeric" style="border-color:#FAC77540">
-  <div class="info-box"><i class="ti ti-info-circle" style="font-size:16px;flex-shrink:0"></i> Biaya admin dibebankan ke rekening asal.</div>
+  <input type="number" id="t-admin" placeholder="0" inputmode="numeric" style="border-color:#FAC77540">
   <label>Tanggal</label>
-  <input type="date" id="tf-date" value="${today}">
+  <input type="date" id="t-date" value="${today}">
   <label>Catatan (opsional)</label>
-  <input type="text" id="tf-note" placeholder="Misal: topup e-wallet, transfer ke istri">
-  <button class="btn btn-primary" onclick="saveTransfer()" style="margin-top:4px"><i class="ti ti-transfer"></i> Simpan Transfer</button>
+  <input type="text" id="t-note" placeholder="Misal: nabung bulanan">
+  <button class="btn btn-transfer" onclick="saveTransfer()" style="margin-top:4px">
+    <i class="ti ti-transfer"></i> Catat Transfer
+  </button>
 </div>
-${transfers.length?`
-<div class="section-title">Riwayat Transfer</div>
-${totalAdmin>0?`<div class="card" style="border-left:2px solid var(--admin);background:#FAC77508;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
-  <div><div style="font-size:12px;font-weight:700;color:var(--admin)">🏦 Total Biaya Admin Transfer</div><div style="font-size:11px;color:var(--text-sec)">${transfers.filter(t=>t.adminFee>0).length} transfer dikenakan biaya</div></div>
-  <div style="font-size:16px;font-weight:700;color:var(--admin)">${fmt(totalAdmin)}</div>
-</div>`:''}
-<div class="card">${transfers.map(t=>txRow(t)).join('')}</div>`
-:'<div class="empty"><i class="ti ti-transfer" style="font-size:40px;display:block;margin-bottom:8px"></i>Belum ada riwayat transfer</div>'}`;
+<div class="info-box"><i class="ti ti-info-circle" style="font-size:18px;flex-shrink:0"></i>Transfer akan mengurangi saldo rekening asal dan menambah saldo rekening tujuan. Biaya admin akan mengurangi rekening asal.</div>`;
 }
 
 function saveTransfer(){
-  const amount=parseFloat(document.getElementById('tf-amount').value);
-  const fromId=document.getElementById('tf-from').value;
-  const toId=document.getElementById('tf-to').value;
-  const admin=parseFloat(document.getElementById('tf-admin').value)||0;
-  const date=document.getElementById('tf-date').value;
-  const note=document.getElementById('tf-note').value;
-  if(!amount||amount<=0){showToast('Masukkan jumlah yang valid');return;}
+  const fromId=document.getElementById('t-from').value;
+  const toId=document.getElementById('t-to').value;
+  const amount=parseFloat(document.getElementById('t-amount').value)||0;
+  const adminFee=parseFloat(document.getElementById('t-admin').value)||0;
+  const date=document.getElementById('t-date').value;
+  const note=document.getElementById('t-note').value;
   if(!fromId){showToast('Pilih rekening asal');return;}
   if(!toId){showToast('Pilih rekening tujuan');return;}
-  if(fromId===toId){showToast('Rekening tidak boleh sama');return;}
-  if(amount+admin>getRekSaldo(fromId)){showToast('Saldo tidak cukup');return;}
-  S.transactions.push({id:'tx_'+Date.now(),type:'transfer',amount,rekId:fromId,rekIdTo:toId,adminFee:admin,date,note:note.trim()});
-  save(); showToast('Transfer berhasil dicatat!'); renderTransfer();
+  if(fromId===toId){showToast('Rekening asal dan tujuan tidak boleh sama');return;}
+  if(!amount||amount<=0){showToast('Masukkan jumlah transfer');return;}
+  S.transactions.push({id:'tx_'+Date.now(),type:'transfer',amount,rekId:fromId,rekIdTo:toId,adminFee,date,note:note.trim()});
+  save(); showPage('dashboard'); showToast('Transfer dicatat!');
 }
 
-// ── REKENING ─────────────────────────────────────────────
+// ── REKENING PAGE ─────────────────────────────────────────
 function renderRekening(){
   const el=document.getElementById('page-rekening');
-  const total=getAllRekSaldo();
-  const types=['Tabungan','Debit','Kredit','E-Wallet','Tunai','Investasi'];
-  const totalAdmin=S.transactions.reduce((a,t)=>a+(t.adminFee||0),0);
-  const editForm=r=>`
-<div class="card" style="margin-bottom:8px;border:0.5px solid var(--accent)">
-  <div style="font-size:13px;font-weight:600;color:var(--accent);margin-bottom:12px"><i class="ti ti-pencil"></i> Edit Rekening</div>
-  <label>Nama</label><input type="text" id="e-name" value="${r.name}">
-  <label>Tipe</label>
-  <select id="e-type">${types.map(t=>`<option ${r.type===t?'selected':''}>${t}</option>`).join('')}</select>
-  <label>Saldo Awal (Rp)</label><input type="number" id="e-saldo" value="${r.saldoAwal||0}" inputmode="numeric">
-  <div style="font-size:11px;color:var(--text-sec);margin-top:-6px;margin-bottom:10px">Saldo saat ini: <b style="color:${r.color}">${fmt(getRekSaldo(r.id))}</b></div>
-  <label>Warna</label><input type="color" id="e-color" value="${r.color||'#1D9E75'}" style="height:44px;padding:4px">
-  <div style="display:flex;gap:8px;margin-top:4px">
-    <button class="btn btn-primary" style="flex:1" onclick="saveEditRek('${r.id}')"><i class="ti ti-check"></i> Simpan</button>
-    <button class="btn" style="flex:1" onclick="REK_EDIT_ID=null;renderRekening()">Batal</button>
-  </div>
-</div>`;
-
+  const rekList=S.rekening.map(r=>{
+    const saldo=getRekSaldo(r.id);
+    return `<div class="rek-card">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div style="width:38px;height:38px;border-radius:50%;background:${r.color}22;display:flex;align-items:center;justify-content:center;color:${r.color};font-size:18px;flex-shrink:0"><i class="ti ti-wallet"></i></div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700">${r.name}</div>
+          <div style="font-size:11px;color:var(--text-sec)">${r.type}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:16px;font-weight:700;color:${r.color}">${fmt(saldo)}</div>
+          <div style="font-size:10px;color:var(--text-hint)">saldo saat ini</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editRek('${r.id}')" style="flex:1"><i class="ti ti-edit"></i> Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="delRek('${r.id}')" style="padding:6px 10px;width:auto"><i class="ti ti-trash"></i></button>
+      </div>
+    </div>`;
+  }).join('');
   el.innerHTML=`
-<div class="hero">
-  <div class="lbl">Total Semua Saldo</div>
-  <div class="amt">${fmt(total)}</div>
-  <div class="sub">${S.rekening.length} rekening terdaftar</div>
-</div>
-${totalAdmin>0?`<div class="card" style="border-left:2px solid var(--admin);background:#FAC77508;margin-bottom:10px">
-  <div style="font-size:12px;font-weight:700;color:var(--admin);margin-bottom:6px">🏦 Rekap Biaya Admin (Semua Waktu)</div>
-  <div style="display:flex;justify-content:space-between;align-items:center">
-    <div style="font-size:11px;color:var(--text-sec)">${S.transactions.filter(t=>t.adminFee>0).length} transaksi dikenakan biaya</div>
-    <div style="font-size:18px;font-weight:700;color:var(--admin)">${fmt(totalAdmin)}</div>
-  </div>
-  <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
-    ${S.rekening.map(r=>{const a=S.transactions.filter(t=>t.rekId===r.id&&(t.adminFee||0)>0).reduce((s,t)=>s+(t.adminFee||0),0);return a>0?`<span style="background:#FAC77520;color:var(--admin);padding:3px 10px;border-radius:8px;font-size:11px">${r.name}: ${fmt(a)}</span>`:''}).join('')}
-  </div>
-</div>`:''}
 <div class="section-title">Rekening Saya</div>
-${S.rekening.map(r=>{
-  if(REK_EDIT_ID===r.id) return editForm(r);
-  const keluar=S.transactions.filter(t=>t.rekId===r.id&&t.type!=='income').reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
-  const masuk=S.transactions.filter(t=>(t.rekId===r.id&&t.type==='income')||(t.rekIdTo===r.id&&t.type==='transfer')).reduce((a,t)=>a+t.amount,0);
-  return `<div class="rek-card" style="display:flex;align-items:center;gap:12px">
-    <div style="width:42px;height:42px;border-radius:50%;background:${r.color}22;display:flex;align-items:center;justify-content:center;color:${r.color};font-size:20px;flex-shrink:0"><i class="ti ti-wallet"></i></div>
-    <div style="flex:1;min-width:0">
-      <div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.name}</div>
-      <div style="font-size:11px;color:var(--text-sec)">${r.type}</div>
-      <div style="font-size:16px;font-weight:700;color:${r.color};margin-top:2px">${fmt(getRekSaldo(r.id))}</div>
-      <div style="font-size:11px;margin-top:1px"><span style="color:var(--income)">+${fmt(masuk)}</span><span style="color:var(--text-hint);margin:0 4px">&middot;</span><span style="color:var(--danger)">-${fmt(keluar)}</span></div>
+${rekList}
+<button class="btn btn-primary" onclick="addRek()"><i class="ti ti-plus"></i> Tambah Rekening</button>
+<div id="rek-form-wrap"></div>`;
+}
+
+function addRek(){
+  REK_EDIT_ID=null;
+  document.getElementById('rek-form-wrap').innerHTML=rekForm(null);
+  document.getElementById('rek-form-wrap').scrollIntoView({behavior:'smooth'});
+}
+function editRek(id){
+  REK_EDIT_ID=id;
+  const r=S.rekening.find(x=>x.id===id);
+  document.getElementById('rek-form-wrap').innerHTML=rekForm(r);
+  document.getElementById('rek-form-wrap').scrollIntoView({behavior:'smooth'});
+}
+function rekForm(r){
+  return `<div class="card" style="margin-top:10px">
+    <div style="font-size:15px;font-weight:700;margin-bottom:12px">${r?'Edit Rekening':'Tambah Rekening'}</div>
+    <label>Nama Rekening</label>
+    <input type="text" id="rf-name" value="${r?r.name:''}" placeholder="Misal: BCA Tabungan">
+    <label>Jenis</label>
+    <select id="rf-type">
+      ${['Tabungan','Debit','Kredit','Tunai','E-Wallet','Investasi'].map(t=>`<option ${(r&&r.type===t)?'selected':''}>${t}</option>`).join('')}
+    </select>
+    <label>Warna</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${['#1D9E75','#378ADD','#BA7517','#9B59B6','#E24B4A','#F4C0D1','#AFA9EC','#5DCAA5','#FAC775','#F0997B'].map(c=>`
+        <div onclick="document.querySelectorAll('.color-opt').forEach(x=>x.style.outline='none');this.style.outline='2px solid #fff';document.getElementById('rf-color').value='${c}'"
+          class="color-opt" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;outline:${(r&&r.color===c)?'2px solid #fff':'none'}"></div>`).join('')}
     </div>
-    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
-      <button class="del-btn" onclick="delRek('${r.id}')"><i class="ti ti-trash"></i></button>
-      <button class="btn btn-sm" onclick="REK_EDIT_ID='${r.id}';renderRekening()" style="font-size:11px;padding:5px 10px"><i class="ti ti-pencil" style="font-size:11px"></i> Edit</button>
+    <input type="hidden" id="rf-color" value="${r?r.color:'#1D9E75'}">
+    <label>Saldo Awal (Rp)</label>
+    <input type="number" id="rf-saldo" value="${r?r.saldoAwal:0}" inputmode="numeric">
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveRek()"><i class="ti ti-check"></i> Simpan</button>
+      <button class="btn" style="flex:1" onclick="document.getElementById('rek-form-wrap').innerHTML=''">Batal</button>
     </div>
   </div>`;
-}).join('')}
-<div class="card" style="margin-top:4px">
-  <div style="font-size:15px;font-weight:600;margin-bottom:14px">Tambah Rekening Baru</div>
-  <label>Nama Rekening</label>
-  <input type="text" id="rek-name" placeholder="Misal: GoPay, BRI Tabungan">
-  <label>Tipe</label>
-  <select id="rek-type">${types.map(t=>`<option>${t}</option>`).join('')}</select>
-  <label>Saldo Awal (Rp)</label>
-  <input type="number" id="rek-saldo" placeholder="0" inputmode="numeric">
-  <label>Warna</label>
-  <input type="color" id="rek-color" value="#1D9E75" style="height:44px;padding:4px">
-  <button class="btn btn-primary" onclick="addRek()"><i class="ti ti-plus"></i> Tambah Rekening</button>
-</div>`;
 }
-
-function saveEditRek(id){
-  const rek=S.rekening.find(r=>r.id===id);if(!rek)return;
-  const name=document.getElementById('e-name').value.trim();
-  if(!name){showToast('Nama tidak boleh kosong');return;}
-  rek.name=name;rek.type=document.getElementById('e-type').value;
-  rek.saldoAwal=parseFloat(document.getElementById('e-saldo').value)||0;
-  rek.color=document.getElementById('e-color').value;
-  REK_EDIT_ID=null;save();renderRekening();
-}
-function addRek(){
-  const name=document.getElementById('rek-name').value.trim();
-  if(!name){showToast('Masukkan nama rekening');return;}
-  S.rekening.push({id:'r_'+Date.now(),name,type:document.getElementById('rek-type').value,color:document.getElementById('rek-color').value,saldoAwal:parseFloat(document.getElementById('rek-saldo').value)||0});
-  save();renderRekening();
+function saveRek(){
+  const name=document.getElementById('rf-name').value.trim();
+  const type=document.getElementById('rf-type').value;
+  const color=document.getElementById('rf-color').value;
+  const saldoAwal=parseFloat(document.getElementById('rf-saldo').value)||0;
+  if(!name){showToast('Nama rekening tidak boleh kosong');return;}
+  if(REK_EDIT_ID){
+    const r=S.rekening.find(x=>x.id===REK_EDIT_ID);
+    if(r){r.name=name;r.type=type;r.color=color;r.saldoAwal=saldoAwal;}
+  } else {
+    S.rekening.push({id:'r_'+Date.now(),name,type,color,saldoAwal});
+  }
+  save(); renderRekening(); showToast(REK_EDIT_ID?'Rekening diperbarui!':'Rekening ditambahkan!');
 }
 function delRek(id){
-  if(!confirm('Hapus rekening ini?'))return;
+  const used=S.transactions.some(t=>t.rekId===id||t.rekIdTo===id);
+  if(used&&!confirm('Rekening ini digunakan di beberapa transaksi. Tetap hapus?')) return;
+  if(!used&&!confirm('Hapus rekening ini?')) return;
   S.rekening=S.rekening.filter(r=>r.id!==id);
-  if(REK_EDIT_ID===id) REK_EDIT_ID=null;
-  save();renderRekening();
+  save(); renderRekening(); showToast('Rekening dihapus!');
 }
 
-// ── SETTINGS ─────────────────────────────────────────────
+// ── SETTINGS PAGE ─────────────────────────────────────────
 function renderSettings(){
   const el=document.getElementById('page-settings');
   el.innerHTML=`
-<div class="section-title">Budget Per Kategori (Bulan Ini)</div>
-<div class="card">
-  <div style="font-size:12px;color:var(--text-sec);margin-bottom:10px">Set batas pengeluaran per kategori. Muncul peringatan ⚠️ di dashboard kalau terlampaui.</div>
-  ${S.categories.map((cat,ci)=>`
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-    <div style="font-size:18px;width:28px;text-align:center">${catEmoji(cat)}</div>
-    <div style="flex:1;min-width:0;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cat.name}</div>
-    <input type="number" placeholder="0 = nonaktif" value="${S.budgets[cat.id]||''}" onchange="S.budgets['${cat.id}']=parseFloat(this.value)||0;save();renderSettings()" style="width:110px;margin:0;font-size:13px;padding:7px 10px">
+<div class="section-title">Kelola Kategori</div>
+
+<div class="card" style="margin-bottom:10px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="font-size:14px;font-weight:700;color:var(--income)"><i class="ti ti-arrow-down-left"></i> Kategori Pemasukan</div>
+    <button class="btn btn-sm btn-income" onclick="openCatModal('income',null)"><i class="ti ti-plus"></i> Tambah</button>
+  </div>
+  ${S.incomeCategories.map(cat=>`
+  <div class="cat-manage-item">
+    <div class="cat-manage-emoji">${catEmoji(cat)}</div>
+    <div style="flex:1;min-width:0">
+      <div class="cat-manage-name">${cat.name}</div>
+      ${cat.subs&&cat.subs.length?`<div style="font-size:11px;color:var(--text-hint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cat.subs.join(' · ')}</div>`:'<div style="font-size:11px;color:var(--text-hint);margin-top:2px">Tidak ada subkategori</div>'}
+    </div>
+    <div class="cat-manage-actions">
+      <button class="btn btn-sm" style="padding:5px 10px" onclick="openCatModal('income','${cat.id}')"><i class="ti ti-edit"></i></button>
+    </div>
   </div>`).join('')}
 </div>
 
-<div class="section-title">Kelola Kategori Pengeluaran</div>
-${S.categories.map((cat,ci)=>`
-<div class="card" style="border-left:2px solid ${cat.color}">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-    <div style="display:flex;align-items:center;gap:9px">
-      <span style="font-size:20px">${catEmoji(cat)}</span>
-      <span style="font-size:14px;font-weight:600">${cat.name}</span>
+<div class="card" style="margin-bottom:10px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="font-size:14px;font-weight:700;color:var(--danger)"><i class="ti ti-arrow-up-right"></i> Kategori Pengeluaran</div>
+    <button class="btn btn-sm btn-primary" onclick="openCatModal('expense',null)"><i class="ti ti-plus"></i> Tambah</button>
+  </div>
+  ${S.categories.map(cat=>`
+  <div class="cat-manage-item">
+    <div class="cat-manage-emoji">${catEmoji(cat)}</div>
+    <div style="flex:1;min-width:0">
+      <div class="cat-manage-name">${cat.name}</div>
+      ${cat.subs&&cat.subs.length?`<div style="font-size:11px;color:var(--text-hint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cat.subs.join(' · ')}</div>`:'<div style="font-size:11px;color:var(--text-hint);margin-top:2px">Tidak ada subkategori</div>'}
     </div>
-    ${ci>=DEFAULT_CATS.length?`<button class="del-btn" onclick="delCat('${cat.id}')"><i class="ti ti-trash"></i></button>`:`<span style="font-size:10px;color:var(--text-hint);background:var(--input-bg);padding:2px 8px;border-radius:8px">default</span>`}
-  </div>
-  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">
-    ${cat.subs.map((s,si)=>`<span style="background:${cat.color}22;color:${cat.color};padding:4px 10px;border-radius:10px;font-size:12px;display:inline-flex;align-items:center;gap:5px">${s}<button onclick="delSub(${ci},${si})" style="background:none;border:none;cursor:pointer;color:${cat.color};font-size:14px;padding:0;line-height:1;opacity:.7">x</button></span>`).join('')}
-  </div>
-  <div style="display:flex;gap:8px">
-    <input type="text" id="newsub-${ci}" placeholder="Tambah subkategori..." style="margin:0;flex:1;font-size:14px">
-    <button class="btn btn-sm btn-primary" onclick="addSub(${ci})" style="width:auto"><i class="ti ti-plus"></i></button>
-  </div>
-</div>`).join('')}
-
-<div class="card">
-  <div style="font-size:15px;font-weight:600;margin-bottom:14px">Tambah Kategori Baru</div>
-  <label>Nama Kategori</label>
-  <input type="text" id="newcat-name" placeholder="Nama kategori">
-  <label>Ikon (emoji)</label>
-  <input type="text" id="newcat-icon" placeholder="Ketik emoji, misal: 🎯" style="font-size:20px">
-  <label>Warna</label>
-  <input type="color" id="newcat-color" value="#5DCAA5" style="height:44px;padding:4px">
-  <button class="btn btn-primary" onclick="addCat()"><i class="ti ti-plus"></i> Tambah Kategori</button>
+    <div class="cat-manage-actions">
+      <button class="btn btn-sm" style="padding:5px 10px" onclick="openCatModal('expense','${cat.id}')"><i class="ti ti-edit"></i></button>
+    </div>
+  </div>`).join('')}
 </div>
 
+<div class="section-title">Budget Bulanan</div>
 <div class="card">
-  <div style="font-size:15px;font-weight:600;margin-bottom:8px">Perbandingan Bulan Ini vs Bulan Lalu</div>
-  ${(()=>{
-    const cur=getMonthTx();
-    let pm=S.currentMonth-1,py=S.currentYear;
-    if(pm<0){pm=11;py--;}
-    const prev=S.transactions.filter(t=>{const d=new Date(t.date);return d.getMonth()===pm&&d.getFullYear()===py;});
-    const curOut=cur.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
-    const prevOut=prev.filter(t=>t.type==='expense').reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
-    const curIn=cur.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
-    const prevIn=prev.filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
-    const mn=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-    const diff=(a,b)=>a-b;
-    const arrow=(a,b,inv=false)=>{const d=a-b;if(d===0)return'';const up=d>0;const bad=(inv?up:!up);return`<span style="color:${bad?'var(--danger)':'var(--accent)'}"> ${up?'▲':'▼'} ${fmt(Math.abs(d))}</span>`;};
-    return `<div style="font-size:12px;color:var(--text-sec);margin-bottom:10px">${mn[pm]} ${py} vs ${mn[S.currentMonth]} ${S.currentYear}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="net-card"><div class="lbl">Pemasukan Lalu</div><div class="val val-blue" style="font-size:12px">${fmt(prevIn)}</div></div>
-      <div class="net-card"><div class="lbl">Pemasukan Ini</div><div class="val val-blue" style="font-size:12px">${fmt(curIn)}${arrow(curIn,prevIn,false)}</div></div>
-      <div class="net-card"><div class="lbl">Pengeluaran Lalu</div><div class="val val-red" style="font-size:12px">${fmt(prevOut)}</div></div>
-      <div class="net-card"><div class="lbl">Pengeluaran Ini</div><div class="val val-red" style="font-size:12px">${fmt(curOut)}${arrow(curOut,prevOut,true)}</div></div>
-    </div>`;
-  })()}
+  <div class="info-box" style="margin-bottom:12px"><i class="ti ti-info-circle" style="font-size:18px;flex-shrink:0"></i>Set batas pengeluaran per kategori. Progress akan tampil di dashboard.</div>
+  ${S.categories.map(cat=>`
+  <div style="margin-bottom:12px">
+    <label>${catEmoji(cat)} ${cat.name}</label>
+    <input type="number" placeholder="0 = tidak diset" inputmode="numeric" value="${S.budgets[cat.id]||''}"
+      oninput="S.budgets['${cat.id}']=parseFloat(this.value)||0;save()" style="margin-bottom:0">
+  </div>`).join('')}
 </div>
 
+<div class="section-title">Data & Backup</div>
 <div class="card">
-  <div style="font-size:15px;font-weight:600;margin-bottom:8px">Reset Data</div>
-  <button class="btn btn-danger" onclick="resetData()"><i class="ti ti-trash"></i> Reset Semua Data</button>
+  <button class="btn" onclick="exportExcel('semua')" style="margin-bottom:8px"><i class="ti ti-file-spreadsheet"></i> Export Semua ke Excel</button>
+  <button class="btn" onclick="document.getElementById('import-modal').style.display='flex'"><i class="ti ti-file-import"></i> Import dari Excel</button>
+  <div style="margin-top:12px;padding-top:12px;border-top:0.5px solid var(--card-border)">
+    <button class="btn btn-danger" onclick="resetAllData()"><i class="ti ti-trash"></i> Reset Semua Data</button>
+  </div>
 </div>`;
 }
 
-function addSub(ci){const inp=document.getElementById('newsub-'+ci);const val=inp.value.trim();if(!val)return;if(!S.categories[ci].subs.includes(val)){S.categories[ci].subs.push(val);save();renderSettings();}else showToast('Subkategori sudah ada');}
-function delSub(ci,si){S.categories[ci].subs.splice(si,1);save();renderSettings();}
-function addCat(){
-  const n=document.getElementById('newcat-name').value.trim();
-  const i=document.getElementById('newcat-icon').value.trim()||'\uD83D\uDCE6';
-  const c=document.getElementById('newcat-color').value;
-  if(!n){showToast('Masukkan nama kategori');return;}
-  S.categories.push({id:'cat_'+Date.now(),name:n,emoji:i,color:c,subs:[]});
-  save();renderSettings();
-}
-function delCat(id){if(!confirm('Hapus kategori ini?'))return;S.categories=S.categories.filter(c=>c.id!==id);save();renderSettings();}
-function resetData(){
-  if(!confirm('Reset semua data? Tidak bisa dibatalkan!'))return;
-  if(!confirm('Yakin benar-benar reset?'))return;
-  localStorage.removeItem(LS_KEY);loadLocal();render();showToast('Data berhasil direset');
+function resetAllData(){
+  if(!confirm('YAKIN reset semua data? Semua transaksi, rekening, dan kategori akan dihapus!')) return;
+  if(!confirm('Ini tidak bisa dibatalkan. Lanjutkan?')) return;
+  localStorage.removeItem(LS_KEY);
+  location.reload();
 }
 
-initApp();
+// ── CATEGORY MODAL ────────────────────────────────────────
+// State temporary untuk subkategori yang sedang diedit di modal
+let _catModalSubs = [];
+
+function openCatModal(type, catId){
+  CAT_MODAL = {type, catId};
+  const cats = type==='income' ? S.incomeCategories : S.categories;
+  const cat = catId ? cats.find(c=>c.id===catId) : null;
+  _catModalSubs = cat ? [...(cat.subs||[])] : [];
+  renderCatModal(cat);
+  document.getElementById('cat-modal').style.display='flex';
+}
+
+function hideCatModal(){
+  document.getElementById('cat-modal').style.display='none';
+  CAT_MODAL={type:'expense',catId:null};
+  _catModalSubs=[];
+}
+
+function renderCatModal(cat){
+  const isIncome = CAT_MODAL.type==='income';
+  const accentColor = isIncome ? 'var(--income)' : 'var(--accent)';
+  const isNew = !cat;
+  const COLORS=['#378ADD','#5B8FD4','#6DB3E8','#85C1E9','#1D9E75','#5DCAA5','#9FE1CB',
+    '#FAC775','#F0997B','#E24B4A','#9B59B6','#AFA9EC','#F4C0D1','#C0DD97','#B4B2A9'];
+  const currentColor = cat ? cat.color : (isIncome ? '#378ADD' : '#1D9E75');
+
+  document.getElementById('cat-modal-box').innerHTML=`
+<div class="modal-handle"></div>
+<div class="modal-title" style="color:${accentColor}">${isNew?(isIncome?'Tambah Kategori Pemasukan':'Tambah Kategori Pengeluaran'):(isIncome?'Edit Kategori Pemasukan':'Edit Kategori Pengeluaran')}</div>
+
+<label>Emoji Kategori</label>
+<input type="text" id="cm-emoji" value="${cat?catEmoji(cat):(isIncome?'💰':'📦')}" placeholder="Masukkan emoji" style="font-size:22px;text-align:center;margin-bottom:10px">
+
+<label>Nama Kategori</label>
+<input type="text" id="cm-name" value="${cat?cat.name:''}" placeholder="${isIncome?'Misal: Freelance':'Misal: Olahraga'}">
+
+<label>Warna</label>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+  ${COLORS.map(c=>`<div onclick="selectCatColor('${c}')" id="cc-${c.replace('#','')}"
+    style="width:26px;height:26px;border-radius:50%;background:${c};cursor:pointer;outline:${currentColor===c?'2px solid #fff;outline-offset:2px':'none'};flex-shrink:0"></div>`).join('')}
+</div>
+<input type="hidden" id="cm-color" value="${currentColor}">
+
+<label>Subkategori <span style="color:var(--text-hint);font-size:11px;font-weight:400">— opsional</span></label>
+<div class="chip-wrap" id="cm-subs-wrap">${renderSubChips()}</div>
+<div style="display:flex;gap:8px;margin-bottom:12px">
+  <input type="text" id="cm-sub-input" placeholder="Ketik subkategori baru..." style="margin-bottom:0;flex:1">
+  <button class="btn btn-sm" style="width:auto;padding:10px 14px" onclick="addSubChip()"><i class="ti ti-plus"></i></button>
+</div>
+
+<div style="display:flex;gap:8px;margin-top:4px">
+  <button class="btn ${isIncome?'btn-income':'btn-primary'}" style="flex:1" onclick="saveCatModal()"><i class="ti ti-check"></i> Simpan</button>
+  <button class="btn" style="flex:1" onclick="hideCatModal()">Batal</button>
+</div>
+${cat?`<button class="btn btn-danger" style="margin-top:8px" onclick="deleteCat('${cat.id}')"><i class="ti ti-trash"></i> Hapus Kategori</button>`:''}`;
+}
+
+function renderSubChips(){
+  return _catModalSubs.map((s,i)=>`<span class="tag-chip">${s}<span class="chip-del" onclick="removeSubChip(${i})">×</span></span>`).join('');
+}
+
+function selectCatColor(c){
+  document.getElementById('cm-color').value=c;
+  document.querySelectorAll('[id^="cc-"]').forEach(el=>{el.style.outline='none';});
+  const el=document.getElementById('cc-'+c.replace('#',''));
+  if(el){el.style.outline='2px solid #fff';el.style.outlineOffset='2px';}
+}
+
+function addSubChip(){
+  const inp=document.getElementById('cm-sub-input');
+  const val=(inp?inp.value:'').trim();
+  if(!val){showToast('Masukkan nama subkategori');return;}
+  if(_catModalSubs.includes(val)){showToast('Subkategori sudah ada');return;}
+  _catModalSubs.push(val);
+  if(inp) inp.value='';
+  const wrap=document.getElementById('cm-subs-wrap');
+  if(wrap) wrap.innerHTML=renderSubChips();
+}
+
+function removeSubChip(idx){
+  _catModalSubs.splice(idx,1);
+  const wrap=document.getElementById('cm-subs-wrap');
+  if(wrap) wrap.innerHTML=renderSubChips();
+}
+
+function saveCatModal(){
+  const name=(document.getElementById('cm-name').value||'').trim();
+  const emoji=(document.getElementById('cm-emoji').value||'').trim();
+  const color=document.getElementById('cm-color').value||'#888';
+  if(!name){showToast('Nama kategori tidak boleh kosong');return;}
+  if(!emoji){showToast('Masukkan emoji kategori');return;}
+
+  const cats = CAT_MODAL.type==='income' ? S.incomeCategories : S.categories;
+  if(CAT_MODAL.catId){
+    // Edit existing
+    const cat=cats.find(c=>c.id===CAT_MODAL.catId);
+    if(cat){cat.name=name;cat.emoji=emoji;cat.color=color;cat.subs=[..._catModalSubs];}
+  } else {
+    // Add new
+    const newId=(CAT_MODAL.type==='income'?'inc_':'cat_')+Date.now();
+    cats.push({id:newId,name,emoji,color,subs:[..._catModalSubs]});
+  }
+  save();
+  hideCatModal();
+  renderSettings();
+  showToast(CAT_MODAL.catId?'Kategori diperbarui!':'Kategori ditambahkan!');
+}
+
+function deleteCat(catId){
+  const used=S.transactions.some(t=>t.catId===catId);
+  if(used&&!confirm('Kategori ini digunakan di beberapa transaksi. Tetap hapus?')) return;
+  if(!used&&!confirm('Hapus kategori ini?')) return;
+  if(CAT_MODAL.type==='income'){
+    S.incomeCategories=S.incomeCategories.filter(c=>c.id!==catId);
+  } else {
+    S.categories=S.categories.filter(c=>c.id!==catId);
+    delete S.budgets[catId];
+  }
+  save();
+  hideCatModal();
+  renderSettings();
+  showToast('Kategori dihapus!');
+}
+
+// ── BOOT ──────────────────────────────────────────────────
+window.addEventListener('load', initApp);
 </script>
 </body>
 </html>
