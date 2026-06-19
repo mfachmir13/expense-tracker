@@ -200,7 +200,8 @@ let S = {
   currentMonth:new Date().getMonth(),
   currentYear:new Date().getFullYear(),
   activePage:'dashboard',
-  dashView:null,
+  dashView:null,      // null | catId | 'rek:rekId'
+  dashSubView:null,   // null | subcat name string (3rd level drill-down)
   budgets:{},
   txSearch:'',
   txFilter:'all',
@@ -234,12 +235,25 @@ function loadLocal(){
     S.currentMonth=new Date().getMonth();
     S.currentYear=new Date().getFullYear();
     S.txSearch=''; S.txFilter='all';
+    S.dashView=null; S.dashSubView=null;
   } catch(e){
     S.categories=JSON.parse(JSON.stringify(DEFAULT_CATS));
     S.incomeCategories=JSON.parse(JSON.stringify(DEFAULT_INCOME_CATS));
   }
 }
-function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){} }
+function save(){
+  try{
+    // Jangan simpan state UI sementara ke localStorage
+    const toSave={
+      transactions:S.transactions,
+      rekening:S.rekening,
+      categories:S.categories,
+      incomeCategories:S.incomeCategories,
+      budgets:S.budgets,
+    };
+    localStorage.setItem(LS_KEY,JSON.stringify(toSave));
+  }catch(e){}
+}
 
 // ── LOADING / TOAST ─────────────────────────────────────
 function showLoading(t){ document.getElementById('loading-text').textContent=t||'Memuat...'; document.getElementById('loading-overlay').classList.add('show'); }
@@ -282,14 +296,14 @@ function showPage(p){
   document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   document.getElementById('nav-'+p).classList.add('active');
-  S.activePage=p; S.dashView=null; render();
+  S.activePage=p; S.dashView=null; S.dashSubView=null; render();
 }
-function prevMonth(){ S.currentMonth--; if(S.currentMonth<0){S.currentMonth=11;S.currentYear--;} S.dashView=null; render(); }
+function prevMonth(){ S.currentMonth--; if(S.currentMonth<0){S.currentMonth=11;S.currentYear--;} S.dashView=null; S.dashSubView=null; render(); }
 function nextMonth(){
   const n=new Date();
   if(S.currentYear>n.getFullYear()||(S.currentYear===n.getFullYear()&&S.currentMonth>=n.getMonth())) return;
   S.currentMonth++; if(S.currentMonth>11){S.currentMonth=0;S.currentYear++;}
-  S.dashView=null; render();
+  S.dashView=null; S.dashSubView=null; render();
 }
 function render(){
   const p=S.activePage;
@@ -386,16 +400,48 @@ ${rekTxs.length?rekTxs.map(t=>txRow(t,false)).join(''):'<div class="empty">Belum
     return;
   }
 
-  // ── Drill-down: kategori
+  // ── Drill-down: subkategori (level 3)
+  if(S.dashView && S.dashSubView!==null){
+    const isIncCat=!!S.incomeCategories.find(c=>c.id===S.dashView);
+    const cat=getCat(S.dashView);
+    const subLabel=S.dashSubView===''?'Tanpa Subkategori':S.dashSubView;
+    const catTxs=txs.filter(t=>t.catId===S.dashView);
+    const subTxs=catTxs.filter(t=>(t.subcat||'')===S.dashSubView).sort((a,b)=>b.id.localeCompare(a.id));
+    const subTot=subTxs.reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
+    const catTot=catTxs.reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
+    const pct=catTot?Math.round(subTot/catTot*100):0;
+    el.innerHTML=`
+<button class="back-btn" onclick="S.dashSubView=null;render()"><i class="ti ti-arrow-left"></i> ${cat.name}</button>
+<div class="hero ${isIncCat?'hero-income':''}" style="border-color:${cat.color}40">
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="width:42px;height:42px;border-radius:50%;background:${cat.color}22;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${catEmoji(cat)}</div>
+    <div>
+      <div style="font-size:12px;color:var(--text-sec);margin-bottom:2px">${cat.name}</div>
+      <div style="font-size:17px;font-weight:700;color:#fff">${subLabel}</div>
+      <div style="font-size:12px;color:var(--text-sec)">${subTxs.length} transaksi · ${pct}% dari kategori</div>
+    </div>
+    <div style="margin-left:auto;text-align:right">
+      <div style="font-size:20px;font-weight:700;color:${isIncCat?'var(--income)':'var(--danger)'}">${fmt(subTot)}</div>
+    </div>
+  </div>
+  <div class="budget-bar" style="margin-top:10px"><div class="budget-fill" style="width:${pct}%;background:${cat.color}"></div></div>
+</div>
+<div class="section-title">Transaksi · ${subLabel}</div>
+<div class="card">${subTxs.length?subTxs.map(t=>txRow(t,false)).join(''):'<div class="empty">Belum ada transaksi di subkategori ini</div>'}</div>`;
+    return;
+  }
+
+  // ── Drill-down: kategori (level 2)
   if(S.dashView){
     const isIncCat=!!S.incomeCategories.find(c=>c.id===S.dashView);
     const cat=getCat(S.dashView);
     const catTxs=txs.filter(t=>t.catId===S.dashView).sort((a,b)=>b.id.localeCompare(a.id));
-    const catTot=catTxs.reduce((a,t)=>a+t.amount,0);
+    const catTot=catTxs.reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
+    // Build subMap: include all defined subs + any freetext subs from transactions
     const subMap={};
     (cat.subs||[]).forEach(s=>subMap[s]=0);
-    catTxs.forEach(t=>{ subMap[t.subcat]=(subMap[t.subcat]||0)+t.amount; });
-    const allSubs=Object.entries(subMap).filter(([,v])=>v>0);
+    catTxs.forEach(t=>{ const k=t.subcat||''; subMap[k]=(subMap[k]||0)+t.amount+(t.adminFee||0); });
+    const allSubs=Object.entries(subMap).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
     const maxSub=Math.max(...Object.values(subMap),1);
     el.innerHTML=`
 <button class="back-btn" onclick="S.dashView=null;render()"><i class="ti ti-arrow-left"></i> Dashboard</button>
@@ -409,13 +455,30 @@ ${rekTxs.length?rekTxs.map(t=>txRow(t,false)).join(''):'<div class="empty">Belum
     <div style="margin-left:auto;font-size:20px;font-weight:700;color:${isIncCat?'var(--income)':'var(--danger)'}">${fmt(catTot)}</div>
   </div>
 </div>
-${allSubs.length?`<div class="section-title">Per Subkategori</div><div class="card">
-${allSubs.map(([sub,amt])=>`<div class="subcat-row">
-  <div><div style="font-size:14px">${sub||'Lainnya'}</div><div class="bar"><div class="bar-fill" style="width:${Math.round(amt/maxSub*100)}%;background:${cat.color}"></div></div></div>
-  <div style="text-align:right"><div style="font-size:13px;font-weight:600">${fmt(amt)}</div><div style="font-size:11px;color:var(--text-sec)">${catTot?Math.round(amt/catTot*100):0}%</div></div>
-</div>`).join('')}
+${allSubs.length?`
+<div class="section-title">Rekap per Subkategori <span style="font-weight:400;color:var(--text-hint);font-size:10px">· tap untuk lihat transaksi</span></div>
+<div class="card">
+${allSubs.map(([sub,amt])=>{
+  const count=catTxs.filter(t=>(t.subcat||'')===sub).length;
+  const pct=catTot?Math.round(amt/catTot*100):0;
+  const label=sub===''?'Tanpa Subkategori':sub;
+  return `<div class="subcat-row" style="cursor:pointer" onclick="S.dashSubView='${sub.replace(/'/g,"\\'")
+  }';render()">
+  <div style="flex:1;min-width:0">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <span style="font-size:14px;font-weight:500">${label}</span>
+      <span style="font-size:10px;color:var(--text-hint);background:var(--input-bg);border-radius:8px;padding:1px 6px">${count} transaksi</span>
+    </div>
+    <div class="bar" style="width:100%"><div class="bar-fill" style="width:${Math.round(amt/maxSub*100)}%;background:${cat.color}"></div></div>
+  </div>
+  <div style="text-align:right;flex-shrink:0;padding-left:10px">
+    <div style="font-size:13px;font-weight:700;color:${isIncCat?'var(--income)':'var(--danger)'}">${fmt(amt)}</div>
+    <div style="font-size:11px;color:var(--text-sec)">${pct}% <i class="ti ti-chevron-right" style="font-size:10px"></i></div>
+  </div>
+</div>`;
+}).join('')}
 </div>`:''}
-<div class="section-title">Transaksi</div>
+<div class="section-title">Semua Transaksi Kategori Ini</div>
 <div class="card">${catTxs.length?catTxs.map(t=>txRow(t,false)).join(''):'<div class="empty">Belum ada transaksi</div>'}</div>`;
     return;
   }
@@ -1115,10 +1178,10 @@ function renderCatModal(cat){
 </div>
 <input type="hidden" id="cm-color" value="${currentColor}">
 
-<label>Subkategori <span style="color:var(--text-hint);font-size:11px;font-weight:400">— opsional</span></label>
+<label>Subkategori <span style="color:var(--text-hint);font-size:11px;font-weight:400">— opsional · tap ✏️ untuk edit</span></label>
 <div class="chip-wrap" id="cm-subs-wrap">${renderSubChips()}</div>
 <div style="display:flex;gap:8px;margin-bottom:12px">
-  <input type="text" id="cm-sub-input" placeholder="Ketik subkategori baru..." style="margin-bottom:0;flex:1">
+  <input type="text" id="cm-sub-input" placeholder="Ketik subkategori baru..." style="margin-bottom:0;flex:1" onkeydown="if(event.key==='Enter')addSubChip()">
   <button class="btn btn-sm" style="width:auto;padding:10px 14px" onclick="addSubChip()"><i class="ti ti-plus"></i></button>
 </div>
 
@@ -1130,7 +1193,48 @@ ${cat?`<button class="btn btn-danger" style="margin-top:8px" onclick="deleteCat(
 }
 
 function renderSubChips(){
-  return _catModalSubs.map((s,i)=>`<span class="tag-chip">${s}<span class="chip-del" onclick="removeSubChip(${i})">×</span></span>`).join('');
+  return _catModalSubs.map((s,i)=>`
+    <span class="tag-chip" id="chip-${i}">
+      <span style="cursor:default">${s}</span>
+      <span class="chip-del" title="Edit" onclick="editSubChip(${i})" style="color:var(--text-sec);font-size:13px;padding:0 2px 0 4px"><i class="ti ti-pencil" style="font-size:11px;pointer-events:none"></i></span>
+      <span class="chip-del" title="Hapus" onclick="removeSubChip(${i})">×</span>
+    </span>`).join('');
+}
+
+function editSubChip(idx){
+  const wrap = document.getElementById('cm-subs-wrap');
+  if(!wrap) return;
+  const chip = document.getElementById('chip-'+idx);
+  if(!chip) return;
+  const currentVal = _catModalSubs[idx];
+  // Replace chip with inline input — store original idx in data attr for safe cancel
+  chip.outerHTML = `
+    <span id="chip-edit-${idx}" data-orig-idx="${idx}" style="display:inline-flex;align-items:center;gap:4px;background:var(--input-bg);border:1px solid var(--accent);border-radius:20px;padding:3px 8px;margin:3px 3px 3px 0">
+      <input id="chip-inp-${idx}" type="text" value="${currentVal.replace(/"/g,'&quot;')}"
+        style="width:90px;border:none;background:transparent;color:var(--text-pri);font-size:12px;padding:0;margin:0;outline:none"
+        onkeydown="if(event.key==='Enter')saveSubChip(${idx});if(event.key==='Escape')cancelSubChip(${idx})">
+      <span onclick="saveSubChip(${idx})" style="color:var(--accent);cursor:pointer;font-size:13px" title="Simpan"><i class="ti ti-check" style="font-size:12px;pointer-events:none"></i></span>
+      <span onclick="cancelSubChip(${idx})" style="color:var(--text-hint);cursor:pointer;font-size:13px" title="Batal">×</span>
+    </span>`;
+  const inp = document.getElementById('chip-inp-'+idx);
+  if(inp){ inp.focus(); inp.select(); }
+}
+
+function saveSubChip(idx){
+  const inp = document.getElementById('chip-inp-'+idx);
+  if(!inp) return;
+  const newVal = inp.value.trim();
+  if(!newVal){ showToast('Nama tidak boleh kosong'); inp.focus(); return; }
+  if(_catModalSubs.some((s,i)=>i!==idx && s===newVal)){ showToast('Subkategori sudah ada'); inp.focus(); return; }
+  _catModalSubs[idx] = newVal;
+  const wrap = document.getElementById('cm-subs-wrap');
+  if(wrap) wrap.innerHTML = renderSubChips();
+}
+
+function cancelSubChip(idx){
+  // Nilai asli masih ada di _catModalSubs[idx] karena belum diubah
+  const wrap = document.getElementById('cm-subs-wrap');
+  if(wrap) wrap.innerHTML = renderSubChips();
 }
 
 function selectCatColor(c){
