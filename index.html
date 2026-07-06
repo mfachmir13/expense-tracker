@@ -163,7 +163,7 @@ label{font-size:12px;color:var(--text-sec);display:block;margin-bottom:5px;font-
   <div class="modal-box">
     <div class="modal-handle"></div>
     <div class="modal-title">Import Data dari Excel</div>
-    <div class="modal-desc">Pilih file Excel yang sebelumnya di-export dari aplikasi ini. Data lama tidak akan hilang, transaksi baru akan ditambahkan.</div>
+    <div class="modal-desc">Pilih file Excel dengan format kolom yang sama seperti hasil Export (Tanggal, Tipe, Kategori, Subkategori, Catatan, Rekening Asal, Rekening Tujuan, Jumlah (Rp), Biaya Admin (Rp)). Data lama tidak akan hilang, transaksi baru akan ditambahkan.</div>
     <input type="file" id="import-file" accept=".xlsx" style="margin-bottom:14px">
     <button class="btn btn-primary" onclick="doImport()"><i class="ti ti-file-import"></i> Import Sekarang</button>
     <button class="btn" onclick="document.getElementById('import-modal').style.display='none'" style="margin-top:8px">Batal</button>
@@ -274,6 +274,13 @@ function monthName(){ const m=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','
 function getMonthTx(){ return S.transactions.filter(t=>{ const d=new Date(t.date); return d.getMonth()===S.currentMonth&&d.getFullYear()===S.currentYear; }); }
 function fmtDate(str){ const d=new Date(str); return d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear(); }
 function genId(){ return 'id_'+Date.now()+'_'+Math.random().toString(36).slice(2,7); }
+// Sort transaksi berdasarkan tanggal transaksi (t.date), bukan waktu pencatatan (t.id).
+// Kalau tanggalnya sama, id dipakai sebagai tie-breaker (urutan pencatatan terbaru di atas).
+function txDateCompare(a,b){
+  const diff=new Date(b.date)-new Date(a.date);
+  if(diff!==0) return diff;
+  return b.id.localeCompare(a.id);
+}
 
 function getRekSaldo(rekId){
   const rek=S.rekening.find(r=>r.id===rekId); if(!rek) return 0;
@@ -371,7 +378,7 @@ function renderDashboard(){
     const rekId=S.dashView.slice(4);
     const rek=getRek(rekId);
     const rekTxs=S.transactions.filter(t=>t.rekId===rekId||t.rekIdTo===rekId)
-      .sort((a,b)=>b.id.localeCompare(a.id));
+      .sort(txDateCompare);
     const rekIn=rekTxs.filter(t=>t.type==='income'||(t.type==='transfer'&&t.rekIdTo===rekId)).reduce((a,t)=>a+t.amount,0);
     const rekOut=rekTxs.filter(t=>(t.type==='expense'&&t.rekId===rekId)||(t.type==='transfer'&&t.rekId===rekId)).reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
     el.innerHTML=`
@@ -406,7 +413,7 @@ ${rekTxs.length?rekTxs.map(t=>txRow(t,false)).join(''):'<div class="empty">Belum
     const cat=getCat(S.dashView);
     const subLabel=S.dashSubView===''?'Tanpa Subkategori':S.dashSubView;
     const catTxs=txs.filter(t=>t.catId===S.dashView);
-    const subTxs=catTxs.filter(t=>(t.subcat||'')===S.dashSubView).sort((a,b)=>b.id.localeCompare(a.id));
+    const subTxs=catTxs.filter(t=>(t.subcat||'')===S.dashSubView).sort(txDateCompare);
     const subTot=subTxs.reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
     const catTot=catTxs.reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
     const pct=catTot?Math.round(subTot/catTot*100):0;
@@ -435,7 +442,7 @@ ${rekTxs.length?rekTxs.map(t=>txRow(t,false)).join(''):'<div class="empty">Belum
   if(S.dashView){
     const isIncCat=!!S.incomeCategories.find(c=>c.id===S.dashView);
     const cat=getCat(S.dashView);
-    const catTxs=txs.filter(t=>t.catId===S.dashView).sort((a,b)=>b.id.localeCompare(a.id));
+    const catTxs=txs.filter(t=>t.catId===S.dashView).sort(txDateCompare);
     const catTot=catTxs.reduce((a,t)=>a+t.amount+(t.adminFee||0),0);
     // Build subMap: include all defined subs + any freetext subs from transactions
     const subMap={};
@@ -601,7 +608,7 @@ ${S.categories.map(cat=>{
 function renderTxList(){
   const el=document.getElementById('page-txlist');
   const mn=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  let all=S.transactions.slice().sort((a,b)=>b.id.localeCompare(a.id));
+  let all=S.transactions.slice().sort(txDateCompare);
   if(S.txFilter!=='all') all=all.filter(t=>t.type===S.txFilter);
   if(S.txSearch){
     const q=S.txSearch.toLowerCase();
@@ -659,7 +666,7 @@ function exportExcel(mode){
   const mn=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
   let txs,filename;
   if(mode==='bulan'){txs=getMonthTx();filename='Transaksi_'+mn[S.currentMonth]+'_'+S.currentYear+'.xlsx';}
-  else{txs=S.transactions.slice().sort((a,b)=>b.id.localeCompare(a.id));filename='Transaksi_Semua.xlsx';}
+  else{txs=S.transactions.slice().sort(txDateCompare);filename='Transaksi_Semua.xlsx';}
   if(!txs.length){showToast('Tidak ada transaksi');return;}
   const rows=txs.map(t=>{
     const tgl=fmtDate(t.date);
@@ -677,37 +684,69 @@ function exportExcel(mode){
   XLSX.writeFile(wb,filename);
 }
 
+function parseImportDate(tgl){
+  const today=new Date().toISOString().split('T')[0];
+  if(tgl===undefined||tgl===null||tgl==='') return today;
+  // Cell tanggal Excel asli (kalau dibaca dengan cellDates:true)
+  if(tgl instanceof Date && !isNaN(tgl)){
+    const y=tgl.getFullYear(),m=String(tgl.getMonth()+1).padStart(2,'0'),d=String(tgl.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+  // Serial number Excel (cell diformat sebagai Tanggal, bukan Teks)
+  if(typeof tgl==='number'){
+    const ms=Math.round((tgl-25569)*86400*1000);
+    const dt=new Date(ms);
+    if(!isNaN(dt)){
+      const y=dt.getUTCFullYear(),m=String(dt.getUTCMonth()+1).padStart(2,'0'),d=String(dt.getUTCDate()).padStart(2,'0');
+      return `${y}-${m}-${d}`;
+    }
+    return today;
+  }
+  const s=String(tgl).trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); // sudah format yyyy-mm-dd
+  if(s.includes('/')){
+    const parts=s.split('/');
+    if(parts.length===3){
+      let [d,m,y]=parts.map(p=>p.trim());
+      if(y.length===2) y=(Number(y)>50?'19':'20')+y;
+      if(d.length===4){ [d,y]=[y,d]; } // jaga-jaga kalau urutan y/m/d
+      return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    }
+  }
+  return today;
+}
+
 function doImport(){
   const file=document.getElementById('import-file').files[0];
   if(!file){showToast('Pilih file dulu');return;}
   const reader=new FileReader();
   reader.onload=e=>{
     try{
-      const wb=XLSX.read(e.target.result,{type:'array'});
+      const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws);
-      let added=0;
+      let added=0, skipped=0;
       rows.forEach(row=>{
-        if(!row['Jumlah (Rp)']||!row['Tipe']) return;
-        const tipe=(row['Tipe']||'').toLowerCase();
-        const tgl=row['Tanggal']||new Date().toISOString().split('T')[0];
-        let dateStr=tgl;
-        if(tgl.includes('/')){const[d,m,y]=tgl.split('/');dateStr=`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;}
-        const catName=row['Kategori']||'';
-        const cat=S.categories.find(c=>c.name===catName)||S.incomeCategories.find(c=>c.name===catName)||S.categories[S.categories.length-1];
-        const rekName=row['Rekening Asal']||row['Rekening']||'';
-        const rek=S.rekening.find(r=>r.name===rekName)||S.rekening[0];
+        if(!row['Jumlah (Rp)']||!row['Tipe']){ skipped++; return; }
+        const tipe=(row['Tipe']||'').toString().trim().toLowerCase();
+        const dateStr=parseImportDate(row['Tanggal']);
+        const rekName=(row['Rekening Asal']||row['Rekening']||'').toString().trim().toLowerCase();
+        const rek=S.rekening.find(r=>r.name.trim().toLowerCase()===rekName)||S.rekening[0];
         if(tipe==='transfer'){
-          const rekToName=row['Rekening Tujuan']||'';
-          const rekTo=S.rekening.find(r=>r.name===rekToName)||S.rekening[0];
-          S.transactions.push({id:'tx_'+Date.now()+'_'+added,type:'transfer',amount:Number(row['Jumlah (Rp)'])||0,rekId:rek.id,rekIdTo:rekTo.id,adminFee:Number(row['Biaya Admin (Rp)'])||0,date:dateStr,note:row['Catatan']||''});
+          const rekToName=(row['Rekening Tujuan']||'').toString().trim().toLowerCase();
+          const rekTo=S.rekening.find(r=>r.name.trim().toLowerCase()===rekToName)||S.rekening[0];
+          S.transactions.push({id:genId(),type:'transfer',amount:Number(row['Jumlah (Rp)'])||0,rekId:rek.id,rekIdTo:rekTo.id,adminFee:Number(row['Biaya Admin (Rp)'])||0,date:dateStr,note:row['Catatan']||''});
         } else {
-          S.transactions.push({id:'tx_'+Date.now()+'_'+added,type:tipe==='pemasukan'?'income':'expense',amount:Number(row['Jumlah (Rp)'])||0,catId:cat?cat.id:'lainlain',subcat:row['Subkategori']&&row['Subkategori']!=='-'?row['Subkategori']:'',rekId:rek.id,adminFee:Number(row['Biaya Admin (Rp)'])||0,date:dateStr,note:row['Catatan']&&row['Catatan']!=='-'?row['Catatan']:''});
+          const isIncomeRow=tipe==='pemasukan';
+          const catList=isIncomeRow?S.incomeCategories:S.categories;
+          const catName=(row['Kategori']||'').toString().trim().toLowerCase();
+          const cat=catList.find(c=>c.name.trim().toLowerCase()===catName)||catList[catList.length-1];
+          S.transactions.push({id:genId(),type:isIncomeRow?'income':'expense',amount:Number(row['Jumlah (Rp)'])||0,catId:cat?cat.id:catList[catList.length-1].id,subcat:row['Subkategori']&&row['Subkategori']!=='-'?row['Subkategori']:'',rekId:rek.id,adminFee:isIncomeRow?0:(Number(row['Biaya Admin (Rp)'])||0),date:dateStr,note:row['Catatan']&&row['Catatan']!=='-'?row['Catatan']:''});
         }
         added++;
       });
       save(); document.getElementById('import-modal').style.display='none'; render();
-      showToast(added+' transaksi berhasil diimport!');
+      showToast(skipped>0?`${added} transaksi diimport, ${skipped} baris dilewati (data tidak lengkap)`:`${added} transaksi berhasil diimport!`);
     }catch(err){showToast('Gagal import: file tidak valid');}
   };
   reader.readAsArrayBuffer(file);
