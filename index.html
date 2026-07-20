@@ -683,117 +683,70 @@ function exportExcel(mode){
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Transaksi');XLSX.writeFile(wb,filename);
 }
 
+const SANITIZE_CHARS_FOR_NAME=[' ','-','/','.',',','(',')','&',"'",':',';','!','?','%','+','@','#'];
+function sanitizeForExcelName(s){
+  let r=String(s||'');
+  SANITIZE_CHARS_FOR_NAME.forEach(ch=>{ r=r.split(ch).join('_'); });
+  if(!/^[A-Za-z_]/.test(r)) r='_'+r;
+  return r;
+}
+function buildSubstituteFormula(cellRef){
+  let f=cellRef;
+  SANITIZE_CHARS_FOR_NAME.forEach(ch=>{
+    const esc=ch==='&'?'&amp;':(ch==='<'?'&lt;':(ch==='>'?'&gt;':ch));
+    f='SUBSTITUTE('+f+',"'+esc+'","_")';
+  });
+  return f;
+}
+function excelColLetter(n){let s='';n++;while(n>0){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s;}
+
 async function downloadImportTemplate(){
   showLoading('Membuat template...');
   try{
     const incCats=S.incomeCategories.map(c=>({...c}));
     const expCats=S.categories.map(c=>({...c}));
+    const allCats=[...incCats,...expCats];
     const rekNames=S.rekening.map(r=>r.name);
-    const incNames=incCats.map(c=>c.name);
-    const expNames=expCats.map(c=>c.name);
 
-    // Helper: sanitize nama kategori jadi komponen named range Excel
-    // Formula Excel: SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(x," ","_"),"&","_"),"-","_"),".","_"),"(","_"),")","_"),"/","_")
-    // JS HARUS menghasilkan hasil identik agar INDIRECT() match.
-    function sanitize(name){
-      return name.replace(/ /g,'_').replace(/&/g,'_').replace(/-/g,'_')
-                 .replace(/\./g,'_').replace(/\(/g,'_').replace(/\)/g,'_')
-                 .replace(/\//g,'_');
-    }
-    function subRangeName(n){ return 'Sub_'+sanitize(n); }
-
-    // Helper: index kolom 0-based -> huruf kolom Excel (A,B,...,Z,AA,...)
-    function colLetter(n){
-      let s='';n++;
-      while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}
-      return s;
-    }
-
-    // Definisi sub tiap kategori (jika tidak ada sub, isi ['-'] agar range valid)
-    const catSubDefs=[
-      ...incCats.map(c=>({name:c.name,subs:(c.subs&&c.subs.length)?c.subs:['-']})),
-      ...expCats.map(c=>({name:c.name,subs:(c.subs&&c.subs.length)?c.subs:['-']})),
-    ];
-
-    // Struktur _DATA sheet:
-    //  A : Tipe (Pemasukan/Pengeluaran/Transfer)
-    //  B : Kategori Pemasukan   -> named range Inc_cats
-    //  C : Kategori Pengeluaran -> named range Exp_cats
-    //  D : Rekening             -> named range Rek_list
-    //  E : Transfer sub ("-")   -> named range Sub_Transfer
-    //  F+ : sub per kategori    -> named range Sub_<NamaKategori>
-    const FIXED_COLS=5;
-    const maxR=Math.max(3,incNames.length,expNames.length,rekNames.length,
-      ...catSubDefs.map(c=>c.subs.length));
-    const tipes=['Pemasukan','Pengeluaran','Transfer'];
-    const dataHeaders=['Tipe','Inc_cats','Exp_cats','Rek_list','Trf_sub',
-      ...catSubDefs.map(c=>c.name)];
-    const dataAoa=[dataHeaders];
-    for(let i=0;i<maxR;i++){
-      dataAoa.push([
-        tipes[i]||'',
-        incNames[i]||'',
-        expNames[i]||'',
-        rekNames[i]||'',
-        i===0?'-':'',
-        ...catSubDefs.map(c=>c.subs[i]||'')
-      ]);
-    }
-    const wsData=XLSX.utils.aoa_to_sheet(dataAoa);
-
-    // Named ranges yang akan di-inject ke workbook.xml
-    const namedRanges=[
-      {name:'Inc_cats', ref:'_DATA!$B$2:$B$'+(incNames.length+1)},
-      {name:'Exp_cats', ref:'_DATA!$C$2:$C$'+(expNames.length+1)},
-      {name:'Rek_list', ref:'_DATA!$D$2:$D$'+(rekNames.length+1)},
-      {name:'Trf_cats', ref:'_DATA!$A$4:$A$4'},
-      {name:'Sub_Transfer', ref:'_DATA!$E$2:$E$2'},
-    ];
-    catSubDefs.forEach((cat,idx)=>{
-      const cL=colLetter(FIXED_COLS+idx);
-      namedRanges.push({
-        name:subRangeName(cat.name),
-        ref:'_DATA!$'+cL+'$2:$'+cL+'$'+(cat.subs.length+1)
-      });
-    });
-
-    // Template sheet (sheet pertama yang dibuka user)
-    const headers=['Tanggal','Tipe','Kategori','Subkategori','Catatan',
-      'Rekening Asal','Rekening Tujuan','Jumlah (Rp)','Biaya Admin (Rp)'];
+    // ── Template sheet ──
+    const headers=['Tanggal','Tipe','Kategori','Subkategori','Catatan','Rekening Asal','Rekening Tujuan','Jumlah (Rp)','Biaya Admin (Rp)'];
     const today=new Date().toLocaleDateString('id-ID');
-    const exRow=[today,'Pemasukan',incNames[0]||'','','Contoh catatan',
-      rekNames[0]||'','',100000,0];
+    const exRow=[today,'Pemasukan','(pilih dari dropdown)','(opsional)','Contoh catatan',S.rekening[0]?S.rekening[0].name:'','',100000,0];
     const templateAoa=[headers,exRow,...Array(99).fill(null).map(()=>Array(9).fill(''))];
     const ws=XLSX.utils.aoa_to_sheet(templateAoa);
     ws['!cols']=[{wch:13},{wch:14},{wch:22},{wch:22},{wch:28},{wch:20},{wch:20},{wch:16},{wch:16}];
 
-    // _PANDUAN sheet
-    const panAoa=[
-      ['PANDUAN PENGISIAN TEMPLATE IMPORT TRANSAKSI'],[''],
-      ['KOLOM','FORMAT / NILAI','KETERANGAN'],
-      ['Tanggal','DD/MM/YYYY','Contoh: 20/07/2025'],
-      ['Tipe','Dropdown','Pilih: Pemasukan / Pengeluaran / Transfer'],
-      ['Kategori','Dropdown','Otomatis menyesuaikan Tipe yang dipilih'],
-      ['Subkategori','Dropdown','Otomatis menyesuaikan Kategori (boleh kosong)'],
-      ['Catatan','Teks bebas','Deskripsi singkat transaksi'],
-      ['Rekening Asal','Dropdown','Rekening sumber dana'],
-      ['Rekening Tujuan','Dropdown','Isi jika Tipe = Transfer, kosongkan jika bukan'],
-      ['Jumlah (Rp)','Angka','Tanpa tanda titik / koma'],
-      ['Biaya Admin (Rp)','Angka','Opsional. Isi 0 jika tidak ada'],
-      [''],['=== KATEGORI PEMASUKAN ==='],
-      ...incCats.map(c=>[c.name,...(c.subs&&c.subs.length?c.subs:['(tidak ada subkategori)'])]),
-      [''],['=== KATEGORI PENGELUARAN ==='],
-      ...expCats.map(c=>[c.name,...(c.subs&&c.subs.length?c.subs:['(tidak ada subkategori)'])]),
-    ];
+    // ── _PANDUAN sheet ──
+    const panAoa=[['Tipe','Kategori','Subkategori'],['=== PEMASUKAN ===','','']];
+    incCats.forEach(cat=>{
+      if(cat.subs&&cat.subs.length) cat.subs.forEach((sub,i)=>panAoa.push([i===0?'Pemasukan':'',i===0?cat.name:'',sub]));
+      else panAoa.push(['Pemasukan',cat.name,'(tanpa subkategori)']);
+    });
+    panAoa.push(['','',''],['=== PENGELUARAN ===','','']);
+    expCats.forEach(cat=>{
+      if(cat.subs&&cat.subs.length) cat.subs.forEach((sub,i)=>panAoa.push([i===0?'Pengeluaran':'',i===0?cat.name:'',sub]));
+      else panAoa.push(['Pengeluaran',cat.name,'(tanpa subkategori)']);
+    });
     const wsPanduan=XLSX.utils.aoa_to_sheet(panAoa);
-    wsPanduan['!cols']=[{wch:20},{wch:25},{wch:45}];
+    wsPanduan['!cols']=[{wch:14},{wch:22},{wch:25}];
 
-    // Rakit workbook
+    // ── _DATA sheet: A=Tipe, B=KategoriPemasukan, C=KategoriPengeluaran, D=Rekening, E..=subkategori per kategori (1 kolom per kategori) ──
+    const tipes=['Pemasukan','Pengeluaran','Transfer'];
+    const maxRows=Math.max(4,incCats.length+1,expCats.length+1,rekNames.length+1,...allCats.map(c=>(c.subs&&c.subs.length?c.subs.length:1)+1));
+    const dataAoa=[['Tipe','KategoriPemasukan','KategoriPengeluaran','Rekening',...allCats.map(c=>c.name)]];
+    for(let i=1;i<maxRows;i++){
+      const row=[tipes[i-1]||'', incCats[i-1]?incCats[i-1].name:'', expCats[i-1]?expCats[i-1].name:'', rekNames[i-1]||''];
+      allCats.forEach(c=>row.push((c.subs&&c.subs[i-1])||''));
+      dataAoa.push(row);
+    }
+    const wsData=XLSX.utils.aoa_to_sheet(dataAoa);
+
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,'Template');
     XLSX.utils.book_append_sheet(wb,wsPanduan,'_PANDUAN');
     XLSX.utils.book_append_sheet(wb,wsData,'_DATA');
 
+    // ✅ MIME type resmi untuk file .xlsx
     const EXCEL_MIME='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     function dlBlob(data,filename){
       const blob=new Blob([data],{type:EXCEL_MIME});
@@ -804,65 +757,75 @@ async function downloadImportTemplate(){
       setTimeout(()=>{try{document.body.removeChild(a);}catch(e){}URL.revokeObjectURL(url);},1000);
     }
 
+    // ── Coba inject dropdown berjenjang (cascading) via JSZip ──
     if(typeof JSZip!=='undefined'){
       try{
         const xlsxArr=XLSX.write(wb,{type:'array',bookType:'xlsx'});
         const zip=await JSZip.loadAsync(xlsxArr);
 
-        // 1. Modifikasi workbook.xml: sembunyikan _DATA + inject named ranges
+        // 1) Data validation di Template (sheet1.xml): Tipe -> Kategori -> Subkategori, + Rekening
+        let sheetXml=await zip.file('xl/worksheets/sheet1.xml').async('text');
+        const dvList=[];
+        dvList.push('<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="B2:B101"><formula1>"Pemasukan,Pengeluaran,Transfer"</formula1></dataValidation>');
+        dvList.push('<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="C2:C101"><formula1>INDIRECT(IF($B2="Pemasukan","KatPemasukan","KatPengeluaran"))</formula1></dataValidation>');
+        dvList.push('<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="D2:D101"><formula1>INDIRECT(&quot;Sub_&quot;&amp;'+buildSubstituteFormula('$C2')+')</formula1></dataValidation>');
+        if(rekNames.length>0){
+          dvList.push('<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="F2:F101"><formula1>Rekening</formula1></dataValidation>');
+          dvList.push('<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="G2:G101"><formula1>Rekening</formula1></dataValidation>');
+        }
+        if(!sheetXml.includes('<dataValidations')){
+          const dvBlock='<dataValidations count="'+dvList.length+'">'+dvList.join('')+'</dataValidations>';
+          // Urutan elemen <worksheet> menurut skema OOXML itu ketat: dataValidations
+          // WAJIB muncul sebelum hyperlinks/printOptions/pageMargins/pageSetup/.../ignoredErrors/dst.
+          // Menaruhnya asal sebelum </worksheet> bisa melanggar urutan itu dan bikin Excel
+          // menganggap file korup lalu membuang isi sheet saat "repair".
+          const trailingTags=['<hyperlinks','<printOptions','<pageMargins','<pageSetup','<headerFooter','<rowBreaks','<colBreaks','<customProperties','<cellWatches','<ignoredErrors','<smartTags','<drawing','<legacyDrawing','<picture','<oleObjects','<controls','<webPublishItems','<tableParts','<extLst'];
+          let insertBefore=null;
+          for(const tag of trailingTags){
+            const idx=sheetXml.indexOf(tag);
+            if(idx!==-1&&(insertBefore===null||idx<insertBefore)) insertBefore=idx;
+          }
+          sheetXml = insertBefore!==null
+            ? sheetXml.slice(0,insertBefore)+dvBlock+sheetXml.slice(insertBefore)
+            : sheetXml.replace('</worksheet>', dvBlock+'</worksheet>');
+        }
+        zip.file('xl/worksheets/sheet1.xml',sheetXml);
+
+        // 2) Defined names di workbook.xml — sumber list untuk INDIRECT() di atas
         let wbXml=await zip.file('xl/workbook.xml').async('text');
-        wbXml=wbXml.replace(/(<sheet\b[^>]*\bname="_DATA"[^>]*?)(\/>)/,'$1 state="hidden"$2');
-        const definedNamesXml='<definedNames>'+
-          namedRanges.map(nr=>'<definedName name="'+nr.name+'">'+nr.ref+'</definedName>').join('')+
-          '</definedNames>';
-        if(wbXml.includes('<definedNames')){
-          wbXml=wbXml.replace(/<definedNames[\s\S]*?<\/definedNames>/,definedNamesXml);
-        }else{
-          wbXml=wbXml.replace('</workbook>',definedNamesXml+'</workbook>');
+        const definedNames=[];
+        definedNames.push('<definedName name="KatPemasukan">_DATA!$B$2:$B$'+(Math.max(1,incCats.length)+1)+'</definedName>');
+        definedNames.push('<definedName name="KatPengeluaran">_DATA!$C$2:$C$'+(Math.max(1,expCats.length)+1)+'</definedName>');
+        if(rekNames.length>0) definedNames.push('<definedName name="Rekening">_DATA!$D$2:$D$'+(rekNames.length+1)+'</definedName>');
+        allCats.forEach((c,i)=>{
+          const col=excelColLetter(4+i); // kolom E dst di _DATA
+          const rowCount=Math.max(1,(c.subs&&c.subs.length)||0)+1;
+          definedNames.push('<definedName name="Sub_'+sanitizeForExcelName(c.name)+'">_DATA!$'+col+'$2:$'+col+'$'+rowCount+'</definedName>');
+        });
+        if(definedNames.length){
+          const dnBlock='<definedNames>'+definedNames.join('')+'</definedNames>';
+          wbXml = wbXml.includes('<definedNames')
+            ? wbXml // (jarang terjadi—SheetJS tidak membuat definedNames sendiri untuk workbook baru)
+            : wbXml.replace('</sheets>','</sheets>'+dnBlock);
         }
         zip.file('xl/workbook.xml',wbXml);
 
-        // 2. Inject cascading data validation ke sheet1.xml (Template)
-        let sheetXml=await zip.file('xl/worksheets/sheet1.xml').async('text');
-
-        // Formula kategori: bergantung Tipe (col B)
-        const catFml='INDIRECT(IF(B2="Pemasukan","Inc_cats",IF(B2="Pengeluaran","Exp_cats","Trf_cats")))';
-
-        // Formula subkategori: bergantung Kategori (col C)
-        // &amp; = operator & dalam XML; "& amp;" string = "&" dalam Excel
-        const subFml='INDIRECT("Sub_"&amp;SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE(C2," ","_"),"&amp;","_"),"-","_"),".","_"),"(","_"),")","_"),"/","_"))';
-
-        // Hapus validasi lama jika ada
-        sheetXml=sheetXml.replace(/<dataValidations[\s\S]*?<\/dataValidations>/,'');
-
-        const dvList=[
-          '<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="B2:B101"><formula1>"Pemasukan,Pengeluaran,Transfer"</formula1></dataValidation>',
-          '<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="C2:C101"><formula1>'+catFml+'</formula1></dataValidation>',
-          '<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="D2:D101"><formula1>'+subFml+'</formula1></dataValidation>',
-          '<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="F2:F101"><formula1>Rek_list</formula1></dataValidation>',
-          '<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="G2:G101"><formula1>Rek_list</formula1></dataValidation>',
-        ];
-        sheetXml=sheetXml.replace('</worksheet>',
-          '<dataValidations count="'+dvList.length+'">'+dvList.join('')+'</dataValidations></worksheet>');
-        zip.file('xl/worksheets/sheet1.xml',sheetXml);
-
-        // 3. Generate dan download
-        const buf=await zip.generateAsync({type:'arraybuffer',compression:'DEFLATE',
-          compressionOptions:{level:6}});
+        // ✅ KEY FIX: pakai 'arraybuffer' bukan 'blob', lalu bungkus Blob dengan MIME Excel
+        const buf=await zip.generateAsync({type:'arraybuffer',compression:'DEFLATE',compressionOptions:{level:6}});
         dlBlob(buf,'Template_Import_Transaksi.xlsx');
         hideLoading();
-        showToast('✅ Template dengan dropdown dinamis berhasil diunduh!');
+        showToast('✅ Template + dropdown bertingkat berhasil diunduh!');
         return;
       }catch(zipErr){
-        console.warn('JSZip gagal, fallback:',zipErr);
+        console.warn('JSZip gagal, fallback tanpa dropdown:',zipErr);
       }
     }
 
-    // FALLBACK: SheetJS langsung, tetap .xlsx valid tapi tanpa dropdown
+    // ✅ FALLBACK: langsung dari SheetJS — tetap format .xlsx valid
     const wbArr=XLSX.write(wb,{type:'array',bookType:'xlsx'});
     dlBlob(wbArr,'Template_Import_Transaksi.xlsx');
     hideLoading();
-    showToast('✅ Template diunduh! (dropdown tidak aktif - cek koneksi internet)');
+    showToast('✅ Template diunduh! (dropdown tidak aktif — cek koneksi internet)');
   }catch(err){
     hideLoading();
     console.error('Template error:',err);
@@ -959,12 +922,12 @@ function saveTx(){
   if(!catId){showToast('Pilih kategori dulu');return;}
   if(!rekId){showToast('Pilih rekening dulu');return;}
   const isIn=AS.type==='income';
-  S.transactions.push({id:'tx_'+Date.now(),amount,catId,subcat,rekId,date,note:note.trim(),type:isIn?'income':'expense',adminFee:isIn?0:adminFee});
+  S.transactions.push({id:genId(),amount,catId,subcat,rekId,date,note:note.trim(),type:isIn?'income':'expense',adminFee:isIn?0:adminFee});
   AS={type:AS.type,catId:'',subcat:'',rekId:''};
   save();showPage('dashboard');showToast(isIn?'Pemasukan dicatat!':'Pengeluaran dicatat!');
 }
 function delTx(id){if(!confirm('Hapus transaksi ini?'))return;S.transactions=S.transactions.filter(t=>t.id!==id);save();render();}
-function dupeTx(id){const t=S.transactions.find(x=>x.id===id);if(!t)return;const copy={...t,id:'tx_'+Date.now(),date:new Date().toISOString().split('T')[0]};S.transactions.push(copy);save();render();showToast('Transaksi diduplikat ke hari ini!');}
+function dupeTx(id){const t=S.transactions.find(x=>x.id===id);if(!t)return;const copy={...t,id:genId(),date:new Date().toISOString().split('T')[0]};S.transactions.push(copy);save();render();showToast('Transaksi diduplikat ke hari ini!');}
 
 // ── EDIT MODAL ───────────────────────────────────────────────
 function showEditModal(id){
@@ -1014,16 +977,24 @@ function renderEditSubcat(){
 }
 function saveEditTx(){
   const tx=S.transactions.find(t=>t.id===EDIT_TX_ID);if(!tx)return;
-  const amount=parseFloat(document.getElementById('em-amount').value)||0;
+  const amount=parseFloat(document.getElementById('em-amount').value);
+  if(!amount||amount<=0){showToast('Masukkan jumlah yang valid');return;}
   const rekEl=document.getElementById('em-rek'),dateEl=document.getElementById('em-date'),noteEl=document.getElementById('em-note');
   if(tx.type==='transfer'){
     const rekToEl=document.getElementById('em-rek-to'),adminEl=document.getElementById('em-admin');
-    tx.amount=amount;tx.rekId=rekEl?rekEl.value:tx.rekId;tx.rekIdTo=rekToEl?rekToEl.value:tx.rekIdTo;
+    const rekId=rekEl?rekEl.value:tx.rekId,rekIdTo=rekToEl?rekToEl.value:tx.rekIdTo;
+    if(!rekId){showToast('Pilih rekening asal');return;}
+    if(!rekIdTo){showToast('Pilih rekening tujuan');return;}
+    if(rekId===rekIdTo){showToast('Rekening asal dan tujuan tidak boleh sama');return;}
+    tx.amount=amount;tx.rekId=rekId;tx.rekIdTo=rekIdTo;
     tx.adminFee=adminEl?(parseFloat(adminEl.value)||0):0;tx.date=dateEl?dateEl.value:tx.date;tx.note=noteEl?noteEl.value:tx.note;
   }else{
     const catEl=document.getElementById('em-cat'),subEl=document.getElementById('em-sub'),adminEl=document.getElementById('em-admin');
     let subcat=subEl?subEl.value:'';if(subcat==='__other__'){const o=document.getElementById('em-sub-other');subcat=o?o.value:'';}
-    tx.amount=amount;tx.catId=catEl?catEl.value:tx.catId;tx.subcat=subcat;tx.rekId=rekEl?rekEl.value:tx.rekId;
+    const catId=catEl?catEl.value:tx.catId,rekId=rekEl?rekEl.value:tx.rekId;
+    if(!catId){showToast('Pilih kategori dulu');return;}
+    if(!rekId){showToast('Pilih rekening dulu');return;}
+    tx.amount=amount;tx.catId=catId;tx.subcat=subcat;tx.rekId=rekId;
     tx.date=dateEl?dateEl.value:tx.date;tx.note=noteEl?noteEl.value.trim():tx.note;tx.adminFee=adminEl?(parseFloat(adminEl.value)||0):0;
   }
   save();hideEditModal();render();showToast('Transaksi diperbarui!');
@@ -1051,7 +1022,7 @@ function saveTransfer(){
   if(!fromId){showToast('Pilih rekening asal');return;}if(!toId){showToast('Pilih rekening tujuan');return;}
   if(fromId===toId){showToast('Rekening asal dan tujuan tidak boleh sama');return;}
   if(!amount||amount<=0){showToast('Masukkan jumlah transfer');return;}
-  S.transactions.push({id:'tx_'+Date.now(),type:'transfer',amount,rekId:fromId,rekIdTo:toId,adminFee,date,note:note.trim()});
+  S.transactions.push({id:genId(),type:'transfer',amount,rekId:fromId,rekIdTo:toId,adminFee,date,note:note.trim()});
   save();showPage('dashboard');showToast('Transfer dicatat!');
 }
 
@@ -1075,7 +1046,7 @@ function saveRek(){
   const color=document.getElementById('rf-color').value,saldoAwal=parseFloat(document.getElementById('rf-saldo').value)||0;
   if(!name){showToast('Nama rekening tidak boleh kosong');return;}
   if(REK_EDIT_ID){const r=S.rekening.find(x=>x.id===REK_EDIT_ID);if(r){r.name=name;r.type=type;r.color=color;r.saldoAwal=saldoAwal;}}
-  else S.rekening.push({id:'r_'+Date.now(),name,type,color,saldoAwal});
+  else S.rekening.push({id:genId(),name,type,color,saldoAwal});
   save();renderRekening();showToast(REK_EDIT_ID?'Rekening diperbarui!':'Rekening ditambahkan!');
 }
 function delRek(id){
@@ -1288,7 +1259,7 @@ function saveGoalModal(){
   const color=document.getElementById('gm-color').value||'#1D9E75',deadline=document.getElementById('gm-deadline').value||'';
   if(!name){showToast('Nama tujuan tidak boleh kosong');return;}if(target<=0){showToast('Target harus lebih dari 0');return;}
   if(GOAL_MODAL_ID){const g=S.goals.find(x=>x.id===GOAL_MODAL_ID);if(g){g.name=name;g.emoji=emoji;g.targetAmount=target;g.savedAmount=Math.min(saved,target);g.color=color;g.deadline=deadline;}}
-  else S.goals.push({id:'goal_'+Date.now(),name,emoji,targetAmount:target,savedAmount:0,color,deadline});
+  else S.goals.push({id:genId(),name,emoji,targetAmount:target,savedAmount:0,color,deadline});
   save();hideGoalModal();renderSettings();showToast(GOAL_MODAL_ID?'Tujuan diperbarui!':'Tujuan ditambahkan!');
 }
 function deleteGoal(id){if(!confirm('Hapus tujuan ini?'))return;S.goals=S.goals.filter(g=>g.id!==id);save();hideGoalModal();renderSettings();showToast('Tujuan dihapus!');}
@@ -1331,7 +1302,7 @@ function saveCatModal(){
   if(!name){showToast('Nama kategori tidak boleh kosong');return;}if(!emoji){showToast('Masukkan emoji kategori');return;}
   const cats=CAT_MODAL.type==='income'?S.incomeCategories:S.categories;
   if(CAT_MODAL.catId){const cat=cats.find(c=>c.id===CAT_MODAL.catId);if(cat){cat.name=name;cat.emoji=emoji;cat.color=color;cat.subs=[..._catModalSubs];}}
-  else{const newId=(CAT_MODAL.type==='income'?'inc_':'cat_')+Date.now();cats.push({id:newId,name,emoji,color,subs:[..._catModalSubs]});}
+  else{const newId=genId();cats.push({id:newId,name,emoji,color,subs:[..._catModalSubs]});}
   save();hideCatModal();renderSettings();showToast(CAT_MODAL.catId?'Kategori diperbarui!':'Kategori ditambahkan!');
 }
 function deleteCat(catId){
