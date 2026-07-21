@@ -246,6 +246,7 @@ let S = {
   theme:'dark', accent:'#1D9E75',
   txViewMode:'list', txDateFrom:'', txDateTo:'', txRekFilter:'', txAmtMin:'', txAmtMax:'',
   txShowFilters:false, calSelDay:null, lapSubTab:'bulanan',
+  txSelectMode:false, txSelectedIds:[],
 };
 let EDIT_TX_ID = null;
 let AS = {type:'expense', catId:'', subcat:'', rekId:''};
@@ -308,6 +309,7 @@ function loadLocal(){
     S.txSearch=''; S.txFilter='all'; S.dashView=null; S.dashSubView=null;
     S.txViewMode='list'; S.txDateFrom=''; S.txDateTo=''; S.txRekFilter=''; S.txAmtMin=''; S.txAmtMax='';
     S.txShowFilters=false; S.calSelDay=null; S.lapSubTab='bulanan';
+    S.txSelectMode=false; S.txSelectedIds=[];
   }catch(e){
     S.categories=JSON.parse(JSON.stringify(DEFAULT_CATS));
     S.incomeCategories=JSON.parse(JSON.stringify(DEFAULT_INCOME_CATS));
@@ -381,43 +383,74 @@ function render(){
 // ── TX ROW ───────────────────────────────────────────────────
 function txRow(t,showDupe=true){
   const tgl=fmtDate(t.date);
+  const selMode=S.txSelectMode&&S.activePage==='txlist';
+  const isSel=selMode&&S.txSelectedIds.includes(t.id);
+  const rowClick=selMode?`toggleTxSelect('${t.id}')`:`showEditModal('${t.id}')`;
+  const rowBg=isSel?'background:color-mix(in srgb, var(--accent) 14%, transparent);border-radius:12px':'';
+  const checkboxHtml=selMode?`<div onclick="${rowClick}" style="width:22px;height:22px;border-radius:6px;border:2px solid ${isSel?'var(--accent)':'var(--border)'};background:${isSel?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;margin-right:2px">${isSel?'<i class="ti ti-check" style="font-size:14px;color:#fff"></i>':''}</div>`:'';
+  const actionsHtml=selMode?'':`<div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
+        ${showDupe?`<button class="del-btn" onclick="dupeTx('${t.id}')" title="Duplikat"><i class="ti ti-copy" style="font-size:15px"></i></button>`:''}
+        <button class="del-btn" onclick="delTx('${t.id}')"><i class="ti ti-trash"></i></button>
+      </div>`;
   if(t.type==='transfer'){
     const from=getRek(t.rekId),to=getRek(t.rekIdTo||'');
-    return `<div class="tx-item">
-      <div class="tx-icon" style="background:#9B59B622;cursor:pointer" onclick="showEditModal('${t.id}')">🔄</div>
-      <div class="tx-info" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+    return `<div class="tx-item" style="${rowBg}">
+      ${checkboxHtml}
+      <div class="tx-icon" style="background:#9B59B622;cursor:pointer" onclick="${rowClick}">🔄</div>
+      <div class="tx-info" style="cursor:pointer" onclick="${rowClick}">
         <div class="tx-name">${t.note||'Transfer'}</div>
         <div class="tx-sub">${from.name} → ${to.name} · ${tgl}</div>
         ${t.adminFee>0?`<div style="font-size:10px;color:var(--admin)">+biaya admin ${fmt(t.adminFee)}</div>`:''}
       </div>
-      <div class="tx-right" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+      <div class="tx-right" style="cursor:pointer" onclick="${rowClick}">
         <div class="tx-amt" style="color:var(--transfer)">${fmt(t.amount)}</div>
         <div class="tx-rek" style="color:var(--transfer)">Transfer</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
-        ${showDupe?`<button class="del-btn" onclick="dupeTx('${t.id}')" title="Duplikat"><i class="ti ti-copy" style="font-size:15px"></i></button>`:''}
-        <button class="del-btn" onclick="delTx('${t.id}')"><i class="ti ti-trash"></i></button>
-      </div>
+      ${actionsHtml}
     </div>`;
   }
   const cat=getCat(t.catId),rek=getRek(t.rekId),isIn=t.type==='income';
   const totalAmt=isIn?t.amount:t.amount+(t.adminFee||0);
-  return `<div class="tx-item">
-    <div class="tx-icon" style="background:${cat.color}22;cursor:pointer" onclick="showEditModal('${t.id}')">${catEmoji(cat)}</div>
-    <div class="tx-info" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+  return `<div class="tx-item" style="${rowBg}">
+    ${checkboxHtml}
+    <div class="tx-icon" style="background:${cat.color}22;cursor:pointer" onclick="${rowClick}">${catEmoji(cat)}</div>
+    <div class="tx-info" style="cursor:pointer" onclick="${rowClick}">
       <div class="tx-name">${t.note||cat.name}</div>
       <div class="tx-sub">${cat.name}${t.subcat?' · '+t.subcat:''} · ${tgl}</div>
       ${(!isIn&&t.adminFee>0)?`<div style="font-size:10px;color:var(--admin)">+biaya admin ${fmt(t.adminFee)}</div>`:''}
     </div>
-    <div class="tx-right" style="cursor:pointer" onclick="showEditModal('${t.id}')">
+    <div class="tx-right" style="cursor:pointer" onclick="${rowClick}">
       <div class="tx-amt ${isIn?'tx-amt-in':'tx-amt-out'}">${isIn?'+':'-'}${fmt(totalAmt)}</div>
       <div class="tx-rek">${rek.name}</div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
-      ${showDupe?`<button class="del-btn" onclick="dupeTx('${t.id}')" title="Duplikat"><i class="ti ti-copy" style="font-size:15px"></i></button>`:''}
-      <button class="del-btn" onclick="delTx('${t.id}')"><i class="ti ti-trash"></i></button>
-    </div>
+    ${actionsHtml}
   </div>`;
+}
+
+// ── BULK SELECT / DELETE ────────────────────────────────────
+function getFilteredTxList(){
+  let all=S.transactions.slice().sort(txDateCompare);
+  if(S.txFilter!=='all')all=all.filter(t=>t.type===S.txFilter);
+  if(S.txSearch){const q=S.txSearch.toLowerCase();all=all.filter(t=>{const cat=getCat(t.catId),rek=getRek(t.rekId);return(t.note&&t.note.toLowerCase().includes(q))||cat.name.toLowerCase().includes(q)||(t.subcat&&t.subcat.toLowerCase().includes(q))||rek.name.toLowerCase().includes(q)||fmt(t.amount).includes(q);});}
+  if(S.txDateFrom)all=all.filter(t=>t.date>=S.txDateFrom);
+  if(S.txDateTo)all=all.filter(t=>t.date<=S.txDateTo);
+  if(S.txRekFilter)all=all.filter(t=>t.rekId===S.txRekFilter||t.rekIdTo===S.txRekFilter);
+  if(S.txAmtMin)all=all.filter(t=>(t.amount+(t.adminFee||0))>=parseFloat(S.txAmtMin));
+  if(S.txAmtMax)all=all.filter(t=>(t.amount+(t.adminFee||0))<=parseFloat(S.txAmtMax));
+  return all;
+}
+function toggleTxSelectMode(){S.txSelectMode=!S.txSelectMode;S.txSelectedIds=[];renderTxList();}
+function toggleTxSelect(id){const i=S.txSelectedIds.indexOf(id);if(i>-1)S.txSelectedIds.splice(i,1);else S.txSelectedIds.push(id);renderTxList();}
+function selectAllVisibleTx(){S.txSelectedIds=getFilteredTxList().map(t=>t.id);renderTxList();}
+function deselectAllTx(){S.txSelectedIds=[];renderTxList();}
+function deleteSelectedTx(){
+  const n=S.txSelectedIds.length;if(!n)return;
+  if(!confirm(`Hapus ${n} transaksi terpilih? Tindakan ini tidak bisa dibatalkan.`))return;
+  const idSet=new Set(S.txSelectedIds);
+  S.transactions=S.transactions.filter(t=>!idSet.has(t.id));
+  S.txSelectedIds=[];S.txSelectMode=false;
+  save();render();
+  showToast(`${n} transaksi berhasil dihapus!`);
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────
@@ -560,28 +593,32 @@ function resetTxFilters(){S.txDateFrom='';S.txDateTo='';S.txRekFilter='';S.txAmt
 
 function renderTxList(){
   const el=document.getElementById('page-txlist');
-  let all=S.transactions.slice().sort(txDateCompare);
-  if(S.txFilter!=='all')all=all.filter(t=>t.type===S.txFilter);
-  if(S.txSearch){const q=S.txSearch.toLowerCase();all=all.filter(t=>{const cat=getCat(t.catId),rek=getRek(t.rekId);return(t.note&&t.note.toLowerCase().includes(q))||cat.name.toLowerCase().includes(q)||(t.subcat&&t.subcat.toLowerCase().includes(q))||rek.name.toLowerCase().includes(q)||fmt(t.amount).includes(q);});}
-  if(S.txDateFrom)all=all.filter(t=>t.date>=S.txDateFrom);
-  if(S.txDateTo)all=all.filter(t=>t.date<=S.txDateTo);
-  if(S.txRekFilter)all=all.filter(t=>t.rekId===S.txRekFilter||t.rekIdTo===S.txRekFilter);
-  if(S.txAmtMin)all=all.filter(t=>(t.amount+(t.adminFee||0))>=parseFloat(S.txAmtMin));
-  if(S.txAmtMax)all=all.filter(t=>(t.amount+(t.adminFee||0))<=parseFloat(S.txAmtMax));
+  let all=getFilteredTxList();
 
   const afc=activeFilterCount();
-  const exportBar=`<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+  const selMode=S.txSelectMode;
+  const selCount=S.txSelectedIds.length;
+  const exportBar=selMode?'':`<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
     <button class="btn btn-sm btn-primary" onclick="exportExcel('bulan')" style="flex:1;padding:9px 6px;min-width:90px"><i class="ti ti-file-spreadsheet"></i> Export Bulan</button>
     <button class="btn btn-sm" onclick="exportExcel('semua')" style="flex:1;padding:9px 6px;min-width:80px"><i class="ti ti-file-spreadsheet"></i> Semua</button>
     <button class="btn btn-sm" onclick="downloadImportTemplate()" style="padding:9px 10px;width:auto" title="Download Template Import"><i class="ti ti-file-download"></i></button>
     <button class="btn btn-sm" onclick="document.getElementById('import-modal').style.display='flex'" style="padding:9px 10px;width:auto" title="Import dari Excel"><i class="ti ti-file-import"></i></button>
   </div>`;
 
+  const bulkBar=selMode?`<div class="card" style="padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <div style="font-size:13px;font-weight:700;flex:1">${selCount} dipilih</div>
+    <button class="btn btn-sm" onclick="selectAllVisibleTx()" style="width:auto;padding:7px 10px">Pilih Semua (${all.length})</button>
+    <button class="btn btn-sm" onclick="deselectAllTx()" style="width:auto;padding:7px 10px">Kosongkan</button>
+    <button class="btn btn-sm btn-danger" onclick="deleteSelectedTx()" style="width:auto;padding:7px 10px" ${selCount===0?'disabled':''}><i class="ti ti-trash"></i> Hapus (${selCount})</button>
+    <button class="btn btn-sm" onclick="toggleTxSelectMode()" style="width:auto;padding:7px 10px">Batal</button>
+  </div>`:'';
+
   const viewToggle=`<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
     <div class="tab3" style="margin-bottom:0;flex:1">
       <button class="tab3-btn ${S.txViewMode==='list'?'active':''}" onclick="S.txViewMode='list';S.calSelDay=null;renderTxList()"><i class="ti ti-list" style="font-size:13px"></i> List</button>
       <button class="tab3-btn ${S.txViewMode==='calendar'?'active':''}" onclick="S.txViewMode='calendar';renderTxList()"><i class="ti ti-calendar" style="font-size:13px"></i> Kalender</button>
     </div>
+    ${selMode?'':`<button class="btn btn-sm" onclick="toggleTxSelectMode()" style="padding:9px 12px;width:auto" title="Pilih Beberapa Transaksi"><i class="ti ti-checkbox"></i></button>`}
     <button class="btn btn-sm ${afc>0?'btn-primary':''}" onclick="S.txShowFilters=!S.txShowFilters;renderTxList()" style="padding:9px 12px;width:auto;position:relative" title="Filter Lanjutan">
       <i class="ti ti-filter"></i>${afc>0?`<span class="filter-badge">${afc}</span>`:''}
     </button>
@@ -615,11 +652,11 @@ function renderTxList(){
 
   const monthNavHtml=`<div class="month-nav" style="margin-bottom:10px"><button onclick="prevMonth()"><i class="ti ti-chevron-left"></i></button><span>${monthName()}</span><button onclick="nextMonth()"><i class="ti ti-chevron-right"></i></button></div>`;
 
-  if(S.txViewMode==='calendar'){el.innerHTML=exportBar+viewToggle+filterPanel+monthNavHtml+renderCalView(all);return;}
-  if(!all.length){el.innerHTML=exportBar+viewToggle+filterPanel+searchBar+'<div class="empty"><i class="ti ti-receipt" style="font-size:40px;display:block;margin-bottom:8px"></i>'+(S.txSearch||afc>0?'Tidak ada hasil':'Belum ada transaksi')+'</div>';return;}
+  if(S.txViewMode==='calendar'){el.innerHTML=exportBar+viewToggle+bulkBar+filterPanel+monthNavHtml+renderCalView(all);return;}
+  if(!all.length){el.innerHTML=exportBar+viewToggle+bulkBar+filterPanel+searchBar+'<div class="empty"><i class="ti ti-receipt" style="font-size:40px;display:block;margin-bottom:8px"></i>'+(S.txSearch||afc>0?'Tidak ada hasil':'Belum ada transaksi')+'</div>';return;}
   const groups={};
   all.forEach(t=>{const d=new Date(t.date),k=d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0');if(!groups[k])groups[k]=[];groups[k].push(t);});
-  el.innerHTML=exportBar+viewToggle+filterPanel+searchBar+
+  el.innerHTML=exportBar+viewToggle+bulkBar+filterPanel+searchBar+
     Object.keys(groups).sort((a,b)=>b.localeCompare(a)).map(k=>{
       const [yr,mo]=k.split('-');
       const gIn=groups[k].filter(t=>t.type==='income').reduce((a,t)=>a+t.amount,0);
@@ -712,7 +749,7 @@ async function downloadImportTemplate(){
     const headers=['Tanggal','Tipe','Kategori','Subkategori','Catatan','Rekening Asal','Rekening Tujuan','Jumlah (Rp)','Biaya Admin (Rp)'];
     const today=new Date().toLocaleDateString('id-ID');
     const exRow=[today,'Pemasukan','(pilih dari dropdown)','(opsional)','Contoh catatan',S.rekening[0]?S.rekening[0].name:'','',100000,0];
-    const templateAoa=[headers,exRow,...Array(99).fill(null).map(()=>Array(9).fill(''))];
+    const templateAoa=[headers,exRow];
     const ws=XLSX.utils.aoa_to_sheet(templateAoa);
     ws['!cols']=[{wch:13},{wch:14},{wch:22},{wch:22},{wch:28},{wch:20},{wch:20},{wch:16},{wch:16}];
 
@@ -850,28 +887,44 @@ function doImport(){
     try{
       const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-      let added=0,skipped=0;
+      let added=0,skipped=0,blank=0;
+      const unmatchedCat=new Set(),unmatchedRek=new Set();
       rows.forEach(row=>{
+        const isRowBlank=Object.values(row).every(v=>v===''||v===undefined||v===null);
+        if(isRowBlank){blank++;return;}
         if(!row['Jumlah (Rp)']||!row['Tipe']){skipped++;return;}
         const tipe=(row['Tipe']||'').toString().trim().toLowerCase();
         const dateStr=parseImportDate(row['Tanggal']);
         const rekName=(row['Rekening Asal']||row['Rekening']||'').toString().trim().toLowerCase();
-        const rek=S.rekening.find(r=>r.name.trim().toLowerCase()===rekName)||S.rekening[0];
+        const rekMatch=S.rekening.find(r=>r.name.trim().toLowerCase()===rekName);
+        if(!rekMatch&&rekName) unmatchedRek.add(row['Rekening Asal']||row['Rekening']);
+        const rek=rekMatch||S.rekening[0];
         if(tipe==='transfer'){
           const rekToName=(row['Rekening Tujuan']||'').toString().trim().toLowerCase();
-          const rekTo=S.rekening.find(r=>r.name.trim().toLowerCase()===rekToName)||S.rekening[0];
+          const rekToMatch=S.rekening.find(r=>r.name.trim().toLowerCase()===rekToName);
+          if(!rekToMatch&&rekToName) unmatchedRek.add(row['Rekening Tujuan']);
+          const rekTo=rekToMatch||S.rekening[0];
           S.transactions.push({id:genId(),type:'transfer',amount:Number(row['Jumlah (Rp)'])||0,rekId:rek.id,rekIdTo:rekTo.id,adminFee:Number(row['Biaya Admin (Rp)'])||0,date:dateStr,note:row['Catatan']||''});
         }else{
           const isIncomeRow=tipe==='pemasukan';
           const catList=isIncomeRow?S.incomeCategories:S.categories;
           const catName=(row['Kategori']||'').toString().trim().toLowerCase();
-          const cat=catList.find(c=>c.name.trim().toLowerCase()===catName)||catList[catList.length-1];
+          const catMatch=catList.find(c=>c.name.trim().toLowerCase()===catName);
+          if(!catMatch&&catName) unmatchedCat.add(`${row['Kategori']} (${isIncomeRow?'Pemasukan':'Pengeluaran'})`);
+          const cat=catMatch||catList[catList.length-1];
           S.transactions.push({id:genId(),type:isIncomeRow?'income':'expense',amount:Number(row['Jumlah (Rp)'])||0,catId:cat?cat.id:catList[catList.length-1].id,subcat:row['Subkategori']&&row['Subkategori']!=='-'?row['Subkategori']:'',rekId:rek.id,adminFee:isIncomeRow?0:(Number(row['Biaya Admin (Rp)'])||0),date:dateStr,note:row['Catatan']&&row['Catatan']!=='-'?row['Catatan']:''});
         }
         added++;
       });
       save();document.getElementById('import-modal').style.display='none';render();
-      showToast(skipped>0?`${added} diimport, ${skipped} baris dilewati`:`${added} transaksi berhasil diimport!`);
+      showToast(skipped>0?`${added} diimport, ${skipped} baris dilewati (Tipe/Jumlah kosong)`:`${added} transaksi berhasil diimport!`);
+      if(unmatchedCat.size||unmatchedRek.size){
+        let warn='⚠️ Beberapa nama di Excel tidak persis cocok dengan yang ada di aplikasi, sehingga transaksinya tetap masuk tapi dialihkan ke kategori/rekening cadangan (yang terakhir di daftar):\n';
+        if(unmatchedCat.size) warn+='\nKategori tidak cocok:\n- '+[...unmatchedCat].join('\n- ');
+        if(unmatchedRek.size) warn+='\n\nRekening tidak cocok:\n- '+[...unmatchedRek].join('\n- ');
+        warn+='\n\nSilakan cek & pindahkan manual transaksi tersebut ke kategori/rekening yang benar.';
+        alert(warn);
+      }
     }catch(err){showToast('Gagal import: file tidak valid');}
   };
   reader.readAsArrayBuffer(file);
