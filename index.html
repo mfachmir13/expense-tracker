@@ -338,7 +338,14 @@ function setAccent(color){
 }
 
 // ── INIT ─────────────────────────────────────────────────────
-async function initApp(){ loadLocal(); loadSettings(); initTheme(); if(cloudEnabled()&&S.cloud.migrated) await pullFromCloud(true); render(); }
+async function initApp(){
+  loadLocal(); loadSettings(); initTheme();
+  render(); // ✅ tampilkan instan pakai cache lokal dulu, biar buka app kerasa cepat
+  if(cloudEnabled()&&S.cloud.migrated){
+    await pullFromCloud(true);
+    render();
+  }
+}
 
 function loadLocal(){
   try{
@@ -512,8 +519,13 @@ async function showPage(p){
   document.getElementById('page-'+p).classList.add('active');
   document.getElementById('nav-'+p).classList.add('active');
   S.activePage=p; S.dashView=null; S.dashSubView=null;
-  if(cloudEnabled()&&S.cloud.migrated) await pullFromCloud(true);
-  render();
+  render(); // ✅ tampilkan instan pakai data yang ada dulu, biar navigasi kerasa cepat
+  if(cloudEnabled()&&S.cloud.migrated){
+    await pullFromCloud(true);
+    // Kalau user udah pindah ke halaman lain sebelum pull ini selesai, atau lagi ngisi
+    // form (Catat/Transfer), jangan render ulang — biar gak keriset/ketimpa halaman lain.
+    if(S.activePage===p && p!=='add' && p!=='transfer') render();
+  }
 }
 function prevMonth(){S.currentMonth--;if(S.currentMonth<0){S.currentMonth=11;S.currentYear--;}S.dashView=null;S.dashSubView=null;S.calSelDay=null;render();}
 function nextMonth(){
