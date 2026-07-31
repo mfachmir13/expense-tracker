@@ -338,14 +338,7 @@ function setAccent(color){
 }
 
 // ── INIT ─────────────────────────────────────────────────────
-async function initApp(){
-  loadLocal(); loadSettings(); initTheme();
-  render(); // ✅ tampilkan instan pakai cache lokal dulu, biar buka app kerasa cepat
-  if(cloudEnabled()&&S.cloud.migrated){
-    await pullFromCloud(true);
-    render();
-  }
-}
+function initApp(){ loadLocal(); loadSettings(); initTheme(); render(); }
 
 function loadLocal(){
   try{
@@ -435,6 +428,10 @@ async function pullFromCloud(silent){
     if(!silent) hideLoading();
   }
 }
+async function syncNow(){
+  const ok=await pullFromCloud(false);
+  if(ok){ render(); showToast('✅ Data terbaru berhasil diambil!'); }
+}
 async function testCloudConnection(){
   const urlEl=document.getElementById('cloud-url'),tokenEl=document.getElementById('cloud-token');
   S.cloud.url=urlEl.value.trim();S.cloud.token=tokenEl.value.trim();
@@ -513,19 +510,13 @@ function getRekSaldo(rekId){
 function getAllRekSaldo(){return S.rekening.reduce((a,r)=>a+getRekSaldo(r.id),0);}
 
 // ── NAVIGATION ───────────────────────────────────────────────
-async function showPage(p){
+function showPage(p){
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   document.getElementById('nav-'+p).classList.add('active');
   S.activePage=p; S.dashView=null; S.dashSubView=null;
-  render(); // ✅ tampilkan instan pakai data yang ada dulu, biar navigasi kerasa cepat
-  if(cloudEnabled()&&S.cloud.migrated){
-    await pullFromCloud(true);
-    // Kalau user udah pindah ke halaman lain sebelum pull ini selesai, atau lagi ngisi
-    // form (Catat/Transfer), jangan render ulang — biar gak keriset/ketimpa halaman lain.
-    if(S.activePage===p && p!=='add' && p!=='transfer') render();
-  }
+  render();
 }
 function prevMonth(){S.currentMonth--;if(S.currentMonth<0){S.currentMonth=11;S.currentYear--;}S.dashView=null;S.dashSubView=null;S.calSelDay=null;render();}
 function nextMonth(){
@@ -734,6 +725,11 @@ ${allSubs.length?`<div class="section-title">Rekap per Subkategori <span style="
   }
   const maxChart=Math.max(...chartData.map(d=>Math.max(d.out,d.inc)),1);
   el.innerHTML=`
+${cloudEnabled()?`<div class="card" style="padding:9px 12px;margin-bottom:10px;display:flex;align-items:center;gap:8px">
+  <div style="width:8px;height:8px;border-radius:50%;background:${S.cloud.connected?'var(--income)':'var(--danger)'};flex-shrink:0"></div>
+  <div style="font-size:11px;color:var(--text-sec);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${S.cloud.lastSync?'Sync terakhir: '+new Date(S.cloud.lastSync).toLocaleString('id-ID',{dateStyle:'short',timeStyle:'short'}):'Belum pernah sync'}</div>
+  <button class="btn btn-sm btn-primary" onclick="syncNow()" style="width:auto;padding:7px 12px;flex-shrink:0"><i class="ti ti-refresh"></i> Sync</button>
+</div>`:''}
 <div class="month-nav">
   <button onclick="prevMonth()"><i class="ti ti-chevron-left"></i></button>
   <span>${monthName()}</span>
