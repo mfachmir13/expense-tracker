@@ -382,14 +382,19 @@ function save(){
 function cloudEnabled(){return!!(S.cloud&&S.cloud.url&&S.cloud.token);}
 async function cloudCall(params){
   if(!cloudEnabled()) throw new Error('Cloud belum dikonfigurasi');
-  const url=new URL(S.cloud.url);
-  url.searchParams.set('token',S.cloud.token);
+  const body={token:S.cloud.token};
   Object.keys(params).forEach(k=>{
     const v=params[k];
-    url.searchParams.set(k, typeof v==='object'?JSON.stringify(v):v);
+    body[k]=typeof v==='object'?JSON.stringify(v):v;
   });
   let res;
-  try{ res=await fetch(url.toString()); }
+  try{
+    res=await fetch(S.cloud.url,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'}, // hindari CORS preflight di Apps Script
+      body:JSON.stringify(body)
+    });
+  }
   catch(e){ throw new Error('Tidak bisa terhubung ke internet/cloud'); }
   let json;
   try{ json=await res.json(); }
