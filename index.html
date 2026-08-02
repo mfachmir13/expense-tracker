@@ -260,6 +260,31 @@ body.light-theme .hero .sub{color:var(--text-sec)}
     <button class="btn" onclick="document.getElementById('import-modal').style.display='none'" style="margin-top:8px">Batal</button>
   </div>
 </div>
+<!-- PIN Lock Screen -->
+<div id="pin-lock" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--app-bg);flex-direction:column;align-items:center;justify-content:center;padding:24px">
+  <div style="font-size:44px;margin-bottom:6px">🔒</div>
+  <div style="font-size:17px;font-weight:700;margin-bottom:4px">Aplikasi Terkunci</div>
+  <div style="font-size:12px;color:var(--text-sec);margin-bottom:20px">Masukkan PIN 6 digit</div>
+  <div id="pin-dots" style="display:flex;gap:10px;margin-bottom:8px"></div>
+  <div id="pin-err" style="font-size:12px;color:var(--danger);height:18px;margin-bottom:10px"></div>
+  <input type="password" id="pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"
+    style="position:absolute;opacity:0;pointer-events:none;left:-9999px">
+  <div style="display:grid;grid-template-columns:repeat(3,68px);gap:10px">
+    <button class="btn" onclick="pinPress('1')" style="height:56px;font-size:20px">1</button>
+    <button class="btn" onclick="pinPress('2')" style="height:56px;font-size:20px">2</button>
+    <button class="btn" onclick="pinPress('3')" style="height:56px;font-size:20px">3</button>
+    <button class="btn" onclick="pinPress('4')" style="height:56px;font-size:20px">4</button>
+    <button class="btn" onclick="pinPress('5')" style="height:56px;font-size:20px">5</button>
+    <button class="btn" onclick="pinPress('6')" style="height:56px;font-size:20px">6</button>
+    <button class="btn" onclick="pinPress('7')" style="height:56px;font-size:20px">7</button>
+    <button class="btn" onclick="pinPress('8')" style="height:56px;font-size:20px">8</button>
+    <button class="btn" onclick="pinPress('9')" style="height:56px;font-size:20px">9</button>
+    <div></div>
+    <button class="btn" onclick="pinPress('0')" style="height:56px;font-size:20px">0</button>
+    <button class="btn" onclick="pinBack()" style="height:56px;font-size:18px"><i class="ti ti-backspace"></i></button>
+  </div>
+</div>
+
 <!-- E-Statement Import Modal -->
 <div class="modal-overlay" id="estm-modal" style="display:none" onclick="if(event.target===this)closeEstm()">
   <div class="modal-box" id="estm-modal-box" style="max-width:900px"></div>
@@ -303,6 +328,7 @@ let S = {
   txShowFilters:false, calSelDay:null, lapSubTab:'bulanan',
   txSelectMode:false, txSelectedIds:[],
   cloud:{url:'',token:'',lastSync:null,connected:false,migrated:false},
+  pinHash:'',
 };
 let EDIT_TX_ID = null;
 let AS = {type:'expense', catId:'', subcat:'', rekId:''};
@@ -318,10 +344,11 @@ function loadSettings(){
     if(d.theme) S.theme=d.theme;
     if(d.accent) S.accent=d.accent;
     if(d.cloud) S.cloud=Object.assign(S.cloud,d.cloud);
+    if(d.pinHash) S.pinHash=d.pinHash;
   }catch(e){}
 }
 function saveSettings(){
-  try{localStorage.setItem(LS_SETTINGS_KEY,JSON.stringify({theme:S.theme,accent:S.accent,cloud:S.cloud}));}catch(e){}
+  try{localStorage.setItem(LS_SETTINGS_KEY,JSON.stringify({theme:S.theme,accent:S.accent,cloud:S.cloud,pinHash:S.pinHash}));}catch(e){}
 }
 
 // ── THEME ────────────────────────────────────────────────────
@@ -343,7 +370,11 @@ function setAccent(color){
 }
 
 // ── INIT ─────────────────────────────────────────────────────
-function initApp(){ loadLocal(); loadSettings(); initTheme(); render(); }
+function initApp(){
+  loadLocal(); loadSettings(); initTheme(); render();
+  startIdleWatcher();
+  if(pinIsSet()&&idleTooLong()) lockApp(); else touchActivity();
+}
 
 function loadLocal(){
   try{
@@ -1364,6 +1395,92 @@ async function commitEstm(){
   showToast(`✅ ${newTxs.length} transaksi berhasil diimport!`);
 }
 
+// ══════════════════════════════════════════════════════════
+//  PIN LOCK — pengaman ringan dari orang iseng (bukan enkripsi data)
+// ══════════════════════════════════════════════════════════
+const LS_ACTIVE_KEY='exptracker_lastactive';
+const IDLE_LIMIT_MS=15*60*1000; // 15 menit
+let PIN_BUF='';
+
+async function hashPin(pin){
+  const raw='exptracker_pin_v1:'+pin;
+  if(window.crypto&&crypto.subtle&&crypto.subtle.digest){
+    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  // Cadangan kalau crypto.subtle tak tersedia (mis. dibuka lewat file://, bukan https)
+  let h1=0x811c9dc5,h2=0x01000193;
+  for(let i=0;i<raw.length;i++){ h1=((h1^raw.charCodeAt(i))*16777619)>>>0; h2=((h2+raw.charCodeAt(i)*31)^(h2<<5))>>>0; }
+  return 'fb'+h1.toString(16).padStart(8,'0')+h2.toString(16).padStart(8,'0');
+}
+function pinIsSet(){ return !!(S.pinHash); }
+function touchActivity(){ try{ localStorage.setItem(LS_ACTIVE_KEY,String(Date.now())); }catch(e){} }
+function idleTooLong(){
+  try{
+    const t=parseInt(localStorage.getItem(LS_ACTIVE_KEY)||'0',10);
+    if(!t) return true;
+    return (Date.now()-t)>IDLE_LIMIT_MS;
+  }catch(e){ return true; }
+}
+function renderPinDots(){
+  const el=document.getElementById('pin-dots');
+  if(!el) return;
+  el.innerHTML=Array.from({length:6},(_,i)=>`<div style="width:14px;height:14px;border-radius:50%;border:2px solid var(--accent);background:${i<PIN_BUF.length?'var(--accent)':'transparent'}"></div>`).join('');
+}
+function lockApp(){
+  if(!pinIsSet()) return;
+  PIN_BUF=''; renderPinDots();
+  const e=document.getElementById('pin-err'); if(e) e.textContent='';
+  document.getElementById('pin-lock').style.display='flex';
+}
+function unlockApp(){
+  document.getElementById('pin-lock').style.display='none';
+  PIN_BUF=''; touchActivity();
+}
+function pinPress(d){
+  if(PIN_BUF.length>=6) return;
+  PIN_BUF+=d; renderPinDots();
+  if(PIN_BUF.length===6) submitPin();
+}
+function pinBack(){ PIN_BUF=PIN_BUF.slice(0,-1); renderPinDots(); const e=document.getElementById('pin-err'); if(e)e.textContent=''; }
+async function submitPin(){
+  const h=await hashPin(PIN_BUF);
+  if(h===S.pinHash){ unlockApp(); render(); }
+  else{
+    const e=document.getElementById('pin-err'); if(e) e.textContent='PIN salah, coba lagi';
+    PIN_BUF=''; renderPinDots();
+  }
+}
+function startIdleWatcher(){
+  ['click','keydown','touchstart','scroll'].forEach(ev=>{
+    document.addEventListener(ev,()=>{
+      if(document.getElementById('pin-lock').style.display!=='flex') touchActivity();
+    },{passive:true});
+  });
+  setInterval(()=>{
+    if(pinIsSet()&&document.getElementById('pin-lock').style.display!=='flex'&&idleTooLong()) lockApp();
+  },20000);
+  // Cek juga saat tab dibuka lagi setelah lama ditinggal
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden&&pinIsSet()&&idleTooLong()) lockApp();
+  });
+}
+async function savePin(){
+  const a=document.getElementById('pin-new').value.trim(), b=document.getElementById('pin-confirm').value.trim();
+  if(!/^\d{6}$/.test(a)){ showToast('PIN harus 6 digit angka'); return; }
+  if(a!==b){ showToast('Konfirmasi PIN tidak sama'); return; }
+  if(!confirm('Simpan PIN ini?\n\nPenting: tidak ada tombol reset PIN. Kalau sampai lupa, satu-satunya jalan adalah menghapus data situs ini dari pengaturan browser (data di Google Sheets tetap aman dan bisa diambil lagi lewat Sync).\n\nLanjutkan?')) return;
+  S.pinHash=await hashPin(a);
+  saveSettings(); touchActivity(); renderSettings();
+  showToast('✅ PIN aktif — terkunci otomatis setelah 15 menit nganggur');
+}
+async function removePin(){
+  const cur=document.getElementById('pin-current').value.trim();
+  if(!/^\d{6}$/.test(cur)){ showToast('Masukkan PIN lama (6 digit)'); return; }
+  if(await hashPin(cur)!==S.pinHash){ showToast('PIN lama salah'); return; }
+  S.pinHash=''; saveSettings(); renderSettings(); showToast('PIN dinonaktifkan');
+}
+
 // ── ADD TX ───────────────────────────────────────────────────
 function renderAdd(){
   const el=document.getElementById('page-add');
@@ -1705,6 +1822,28 @@ function renderSettings(){
     <label>URL Web App (Apps Script)</label><input type="text" id="cloud-url" value="${S.cloud.url}" placeholder="https://script.google.com/macros/s/.../exec">
     <label>Token Rahasia</label><input type="text" id="cloud-token" value="${S.cloud.token}" placeholder="Token yang kamu set di Code.gs">
     <button class="btn btn-primary" onclick="testCloudConnection()" style="margin-top:4px"><i class="ti ti-plug"></i> Hubungkan (cek koneksi saja, data belum berubah)</button>
+  `}
+</div>
+
+<div class="section-title">🔒 Keamanan</div>
+<div class="card" style="margin-bottom:10px">
+  ${S.pinHash?`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:10px;height:10px;border-radius:50%;background:var(--income);flex-shrink:0"></div>
+      <div style="font-size:13px;font-weight:600">PIN aktif</div>
+    </div>
+    <div style="font-size:11px;color:var(--text-sec);margin-bottom:12px">Aplikasi terkunci otomatis setelah 15 menit tidak dipakai.</div>
+    <label>Masukkan PIN saat ini untuk menonaktifkan</label>
+    <input type="password" id="pin-current" inputmode="numeric" maxlength="6" placeholder="••••••">
+    <button class="btn btn-danger" onclick="removePin()"><i class="ti ti-lock-open"></i> Nonaktifkan PIN</button>
+  `:`
+    <div style="font-size:12px;color:var(--text-sec);margin-bottom:10px">Kunci aplikasi dengan PIN 6 digit. Berguna kalau perangkat ini kadang dipakai orang lain. Aplikasi terkunci otomatis setelah 15 menit nganggur.</div>
+    <div class="warn-box" style="margin-bottom:12px">Ini pengaman ringan untuk mencegah orang iseng, bukan enkripsi. Orang yang paham teknis tetap bisa melewatinya.</div>
+    <label>PIN Baru (6 digit)</label>
+    <input type="password" id="pin-new" inputmode="numeric" maxlength="6" placeholder="••••••">
+    <label>Ulangi PIN</label>
+    <input type="password" id="pin-confirm" inputmode="numeric" maxlength="6" placeholder="••••••">
+    <button class="btn btn-primary" onclick="savePin()"><i class="ti ti-lock"></i> Aktifkan PIN</button>
   `}
 </div>
 
