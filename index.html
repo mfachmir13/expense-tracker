@@ -45,6 +45,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .btn-sm{padding:6px 12px;font-size:12px;width:auto;border-radius:8px}
 input,select,textarea{width:100%;border:0.5px solid var(--input-border);border-radius:10px;padding:11px 13px;font-size:16px;background:var(--input-bg);color:var(--text-pri);font-family:inherit;margin-bottom:10px;-webkit-appearance:none;appearance:none;transition:background .25s,border-color .15s,color .25s;}
 input:focus,select:focus{outline:none;border-color:var(--accent)}
+/* Aturan appearance:none di atas mematikan tanda centang bawaan checkbox — kembalikan khusus checkbox */
+input[type=checkbox]{-webkit-appearance:checkbox;appearance:auto;width:18px;height:18px;min-width:18px;padding:0;margin:0;border:none;border-radius:0;background:transparent;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
 select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%23a0a0a0' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
 label{font-size:12px;color:var(--text-sec);display:block;margin-bottom:5px;font-weight:500}
 .hero{background:linear-gradient(135deg,#1a3d2e,#0f2a1e);border-radius:16px;padding:18px;margin-bottom:10px;border:0.5px solid #1D9E7540}
@@ -1177,16 +1179,9 @@ function renderEstmModal(){
 <button class="btn" onclick="closeEstm()" style="margin-top:8px">Batal</button>`;
     return;
   }
-  const inc=ESTM.rows.filter(r=>r.include).length;
-  const dupExact=ESTM.rows.filter(r=>r.dup===2).length;
-  const dupPartial=ESTM.rows.filter(r=>r.dup===1).length;
   box.innerHTML=`<div class="modal-handle"></div>
 <div class="modal-title">Preview — ${ESTM.rows.length} transaksi terbaca</div>
-<div style="font-size:12px;color:var(--text-sec);margin-bottom:10px;line-height:1.7">
-  Tercentang: <b style="color:var(--accent)">${inc}</b> dari ${ESTM.rows.length}.
-  ${dupExact?`<br><span style="background:#F4CCCC;color:#111;padding:1px 6px;border-radius:4px">🔴 ${dupExact} sudah ada (tanggal+jumlah+catatan sama)</span> — centang dimatikan otomatis.`:''}
-  ${dupPartial?`<br><span style="background:#FFF3CD;color:#111;padding:1px 6px;border-radius:4px">🟡 ${dupPartial} mirip (tanggal+jumlah sama, catatan beda)</span> — cek dulu, mungkin transaksi beda.`:''}
-</div>
+<div id="estm-counts" style="font-size:12px;color:var(--text-sec);margin-bottom:10px;line-height:1.7">${estmCountsHtml()}</div>
 <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
   <button class="btn btn-sm" onclick="estmToggleAll(true)" style="width:auto">Centang Semua</button>
   <button class="btn btn-sm" onclick="estmToggleAll(false)" style="width:auto">Kosongkan</button>
@@ -1201,23 +1196,50 @@ function renderEstmModal(){
 ${ESTM.rows.map((r,i)=>{
   const bg=r.dup===2?'background:#F4CCCC33':(r.dup===1?'background:#FFF3CD33':'');
   return `<tr style="${bg};border-top:0.5px solid var(--card-border)">
-  <td style="padding:5px 4px;text-align:center"><input type="checkbox" ${r.include?'checked':''} onchange="ESTM.rows[${i}].include=this.checked;renderEstmModal()" style="width:16px;height:16px;margin:0"></td>
+  <td style="padding:5px 4px;text-align:center"><input type="checkbox" id="estm-chk-${i}" ${r.include?'checked':''} onchange="estmToggleOne(${i},this.checked)"></td>
   <td style="padding:5px 4px"><input type="date" value="${r.date}" onchange="ESTM.rows[${i}].date=this.value" style="margin:0;padding:4px 6px;font-size:11px;width:130px"></td>
-  <td style="padding:5px 4px"><select onchange="ESTM.rows[${i}].type=this.value;renderEstmModal()" style="margin:0;padding:4px 6px;font-size:11px;width:110px">
-    <option value="expense" ${r.type==='expense'?'selected':''}>Pengeluaran</option>
-    <option value="income" ${r.type==='income'?'selected':''}>Pemasukan</option>
-    <option value="transfer" ${r.type==='transfer'?'selected':''}>Transfer</option>
-  </select>${r.type==='transfer'?`<br><select onchange="ESTM.rows[${i}].rekIdTo=this.value" style="margin:4px 0 0;padding:4px 6px;font-size:11px;width:110px"><option value="">-- ke rekening --</option>${S.rekening.filter(x=>x.id!==ESTM.rekId).map(x=>`<option value="${x.id}" ${r.rekIdTo===x.id?'selected':''}>${x.name}</option>`).join('')}</select>`:''}</td>
+  <td id="estm-typecell-${i}" style="padding:5px 4px">${estmTypeCellHtml(i)}</td>
   <td style="padding:5px 4px"><input type="text" value="${(r.note||'').replace(/"/g,'&quot;')}" onchange="ESTM.rows[${i}].note=this.value" style="margin:0;padding:4px 6px;font-size:11px;width:100%;min-width:150px"></td>
   <td style="padding:5px 4px;text-align:right"><input type="number" value="${r.amount}" onchange="ESTM.rows[${i}].amount=parseFloat(this.value)||0" style="margin:0;padding:4px 6px;font-size:11px;width:110px;text-align:right"></td>
 </tr>`;}).join('')}
 </tbody></table></div>
 <div style="display:flex;gap:8px;margin-top:12px">
-  <button class="btn btn-primary" style="flex:1" onclick="commitEstm()"><i class="ti ti-check"></i> Simpan ${inc} Transaksi</button>
+  <button class="btn btn-primary" id="estm-savebtn" style="flex:1" onclick="commitEstm()"><i class="ti ti-check"></i> Simpan ${ESTM.rows.filter(r=>r.include).length} Transaksi</button>
   <button class="btn" style="flex:1" onclick="closeEstm()">Batal</button>
 </div>`;
 }
-function estmToggleAll(v){ ESTM.rows.forEach(r=>r.include=v); renderEstmModal(); }
+function estmCountsHtml(){
+  const inc=ESTM.rows.filter(r=>r.include).length;
+  const dupExact=ESTM.rows.filter(r=>r.dup===2).length;
+  const dupPartial=ESTM.rows.filter(r=>r.dup===1).length;
+  return `Tercentang: <b style="color:var(--accent)">${inc}</b> dari ${ESTM.rows.length}.
+  ${dupExact?`<br><span style="background:#F4CCCC;color:#111;padding:1px 6px;border-radius:4px">🔴 ${dupExact} sudah ada (tanggal+jumlah+catatan sama)</span> — centang dimatikan otomatis.`:''}
+  ${dupPartial?`<br><span style="background:#FFF3CD;color:#111;padding:1px 6px;border-radius:4px">🟡 ${dupPartial} mirip (tanggal+jumlah sama, catatan beda)</span> — cek dulu, mungkin transaksi beda.`:''}`;
+}
+function estmTypeCellHtml(i){
+  const r=ESTM.rows[i];
+  return `<select onchange="estmChangeType(${i},this.value)" style="margin:0;padding:4px 6px;font-size:11px;width:110px">
+    <option value="expense" ${r.type==='expense'?'selected':''}>Pengeluaran</option>
+    <option value="income" ${r.type==='income'?'selected':''}>Pemasukan</option>
+    <option value="transfer" ${r.type==='transfer'?'selected':''}>Transfer</option>
+  </select>${r.type==='transfer'?`<br><select onchange="ESTM.rows[${i}].rekIdTo=this.value" style="margin:4px 0 0;padding:4px 6px;font-size:11px;width:110px"><option value="">-- ke rekening --</option>${S.rekening.filter(x=>x.id!==ESTM.rekId).map(x=>`<option value="${x.id}" ${r.rekIdTo===x.id?'selected':''}>${x.name}</option>`).join('')}</select>`:''}`;
+}
+// ✅ Cuma update counter + label tombol simpan — TABEL gak disentuh sama sekali, jadi posisi scroll gak ke-reset.
+function estmRefreshCounts(){
+  const c=document.getElementById('estm-counts'); if(c) c.innerHTML=estmCountsHtml();
+  const inc=ESTM.rows.filter(r=>r.include).length;
+  const btn=document.getElementById('estm-savebtn'); if(btn) btn.innerHTML=`<i class="ti ti-check"></i> Simpan ${inc} Transaksi`;
+}
+function estmToggleOne(i,checked){ ESTM.rows[i].include=checked; estmRefreshCounts(); }
+function estmChangeType(i,val){
+  ESTM.rows[i].type=val;
+  const cell=document.getElementById('estm-typecell-'+i);
+  if(cell) cell.innerHTML=estmTypeCellHtml(i);
+}
+function estmToggleAll(v){
+  ESTM.rows.forEach((r,i)=>{ r.include=v; const chk=document.getElementById('estm-chk-'+i); if(chk) chk.checked=v; });
+  estmRefreshCounts();
+}
 
 // ── Baca teks dari PDF pakai PDF.js ──
 async function extractPdfLines(arrayBuffer){
